@@ -1,0 +1,24 @@
+# PostgreSQL de desenvolvimento. A suíte de testes NÃO depende deste serviço
+# (ver README, decisão 9): ela roda em H2 em memória.
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: catalogo-postgres
+    environment:
+      POSTGRES_DB: catalogo
+      POSTGRES_USER: catalogo
+      POSTGRES_PASSWORD: catalogo
+    ports:
+      - "5432:5432"
+    volumes:
+      # Volume nomeado: os dados sobrevivem a 'docker compose down'.
+      # Para começar do zero use 'docker compose down -v'.
+      - catalogo-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catalogo -d catalogo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  catalogo-postgres-data:

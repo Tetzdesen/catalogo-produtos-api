@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      O starter-parent traz o gerenciamento de versões de todo o ecossistema Spring.
+      Herdar dele significa declarar dependências sem <version> e ter a garantia de
+      que as versões combinam entre si.
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.1.1</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>br.com.catalogo</groupId>
+    <artifactId>catalogo-produtos-api</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>catalogo-produtos-api</name>
+    <description>API REST de catálogo e controle de estoque de produtos</description>
+
+    <properties>
+        <java.version>21</java.version>
+        <!-- springdoc 3.1.1 é construído sobre Spring Boot 4.1.x (ver README, decisão 12). -->
+        <springdoc.version>3.1.1</springdoc.version>
+    </properties>
+
+    <dependencies>
+        <!-- MVC, Jackson e servidor embarcado. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Bean Validation: valida os DTOs de entrada antes de a regra de negócio rodar. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- JPA/Hibernate + repositórios Spring Data. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!--
+          Migrações de schema versionadas (decisão 8).
+          No Spring Boot 4 a auto-configuração do Flyway saiu do jar 'autoconfigure'
+          e passou a viver em um starter próprio: declarar apenas 'flyway-core'
+          compila, mas as migrações nunca rodam.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
+        </dependency>
+        <!-- Suporte do Flyway ao dialeto do PostgreSQL (módulo separado desde o Flyway 10). -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
+        <!-- Driver do banco de produção/desenvolvimento. -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- OpenAPI/Swagger gerado a partir dos controllers (decisão 12). -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
+        </dependency>
+
+        <!-- JUnit 5, Mockito, AssertJ e MockMvc. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+          No Spring Boot 4 cada fatia de teste virou um módulo próprio: o
+          starter-test sozinho não traz mais @DataJpaTest nem @AutoConfigureMockMvc.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-data-jpa-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-jdbc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Banco em memória usado pela suíte de testes (decisão 9). -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+
+            <!--
+              Duas suítes, dois momentos:
+              - surefire (fase 'test') roda *Test — os testes unitários, rápidos;
+              - failsafe (fase 'verify') roda *IT — os testes de integração, que
+                sobem o contexto do Spring.
+              O parent já gerencia a versão e a configuração do failsafe; só falta
+              ativá-lo. 'mvn test' dá retorno em segundos, 'mvn verify' roda tudo.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

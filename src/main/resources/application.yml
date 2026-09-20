@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: catalogo-produtos-api
+
+  datasource:
+    # Credenciais vêm do ambiente (ver .env.example). Os valores padrão existem
+    # apenas para o desenvolvimento local com o docker-compose deste repositório.
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/catalogo}
+    username: ${DB_USER:catalogo}
+    password: ${DB_PASSWORD:catalogo}
+
+  jpa:
+    hibernate:
+      # 'validate' e nunca 'update': o schema é responsabilidade do Flyway.
+      # Divergência entre entidade e tabela derruba a aplicação no start,
+      # em vez de virar erro em produção.
+      ddl-auto: validate
+    # Sessão aberta na camada de view esconde N+1 e permite lazy loading no
+    # controller. Desligado de propósito: quem precisa do dado carrega no service.
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  data:
+    web:
+      pageable:
+        default-page-size: 20
+        # Teto de página: impede que um cliente peça ?size=100000 e derrube a API.
+        max-page-size: 100
+
+# Prefixo aplicado a todos os controllers do pacote 'controller' (ver ApiConfig).
+api:
+  base-path: /api/v1
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+server:
+  error:
+    # Stack trace nunca vaza para o cliente; o corpo de erro é o ProblemDetail.
+    include-stacktrace: never
+    include-message: never
