@@ -1,11 +1,13 @@
 package br.com.catalogo.controller;
 
+import br.com.catalogo.config.OpenApiConfig;
 import br.com.catalogo.dto.PaginaResponse;
 import br.com.catalogo.dto.ProdutoRequest;
 import br.com.catalogo.dto.ProdutoResponse;
 import br.com.catalogo.service.ProdutoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.groups.Default;
@@ -40,6 +42,9 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
  * <p>O campo {@code service} é do tipo da <b>interface</b> {@link ProdutoService}.
  * O controller não sabe que existe um {@code ProdutoServiceImpl}: o Spring
  * encontra o único bean que implementa a interface e o entrega no construtor.
+ *
+ * <p>Quem pode chamar cada rota não é decidido aqui, e sim na {@code SegurancaConfig}.
+ * O {@code @SecurityRequirement} só documenta, no Swagger, quais exigem token.
  */
 @RestController
 @RequestMapping("/produtos")
@@ -58,6 +63,7 @@ public class ProdutoController {
      */
     @PostMapping
     @Operation(summary = "Cadastra um produto (nasce ativo)")
+    @SecurityRequirement(name = OpenApiConfig.ESQUEMA_JWT)
     public ResponseEntity<ProdutoResponse> criar(@Valid @RequestBody ProdutoRequest dados) {
         ProdutoResponse criado = service.criar(dados);
         URI local = ServletUriComponentsBuilder.fromCurrentRequest()
@@ -91,6 +97,7 @@ public class ProdutoController {
      */
     @PutMapping("/{id}")
     @Operation(summary = "Substitui os dados de um produto")
+    @SecurityRequirement(name = OpenApiConfig.ESQUEMA_JWT)
     public ProdutoResponse atualizar(@PathVariable Long id,
                                      @Validated({Default.class, ProdutoRequest.Atualizacao.class})
                                      @RequestBody ProdutoRequest dados) {
@@ -100,6 +107,7 @@ public class ProdutoController {
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Exclui um produto definitivamente")
+    @SecurityRequirement(name = OpenApiConfig.ESQUEMA_JWT)
     public void excluir(@PathVariable Long id) {
         service.excluir(id);
     }

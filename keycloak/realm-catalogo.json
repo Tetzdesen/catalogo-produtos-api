@@ -1,0 +1,29 @@
+{
+  "realm": "catalogo",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "catalogo-cli",
+      "description": "Cliente de desenvolvimento: obtém tokens por client credentials para chamar a API.",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "catalogo-cli-segredo",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "audiencia-catalogo-api",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "catalogo-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ]
+}

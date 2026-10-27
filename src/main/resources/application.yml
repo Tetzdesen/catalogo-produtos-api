@@ -39,6 +39,18 @@ spring:
         jdbc:
           time_zone: UTC
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # O emissor dos tokens, por exemplo https://auth.empresa.com/realms/catalogo.
+          # O Spring busca nele (em /.well-known/openid-configuration) as chaves
+          # públicas que conferem a assinatura, e recusa token com outro 'iss'.
+          issuer-uri: ${JWT_ISSUER_URI}
+          # O 'aud' que o token precisa ter. Sem esta conferência, um token que o
+          # mesmo provedor emitiu para OUTRA aplicação também seria aceito aqui.
+          audiences: ${JWT_AUDIENCE}
+
   flyway:
     enabled: true
     locations: classpath:db/migration

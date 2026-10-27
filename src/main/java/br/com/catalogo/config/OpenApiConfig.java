@@ -1,8 +1,10 @@
 package br.com.catalogo.config;
 
+import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.info.License;
+import io.swagger.v3.oas.models.security.SecurityScheme;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -25,14 +27,32 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class OpenApiConfig {
 
+    /**
+     * Nome do esquema de autenticação, citado por {@code @SecurityRequirement}
+     * nos endpoints que exigem token.
+     */
+    public static final String ESQUEMA_JWT = "jwt";
+
+    /**
+     * O esquema {@code bearer} faz o Swagger UI mostrar o botão "Authorize": o
+     * token colado ali vai no cabeçalho {@code Authorization} das chamadas.
+     */
     @Bean
     public OpenAPI catalogoOpenAPI() {
-        return new OpenAPI().info(new Info()
+        return new OpenAPI()
+                .components(new Components().addSecuritySchemes(ESQUEMA_JWT, new SecurityScheme()
+                        .type(SecurityScheme.Type.HTTP)
+                        .scheme("bearer")
+                        .bearerFormat("JWT")))
+                .info(new Info()
                 .title("Catálogo de Produtos API")
                 .version("v1")
                 .description("""
                         API REST básica de catálogo de produtos: cadastro, consulta, \
                         listagem paginada com filtro por nome, atualização e exclusão.
+
+                        Consultas são públicas. Cadastro, atualização e exclusão exigem \
+                        um JWT do provedor de identidade no cabeçalho Authorization.
 
                         Erros seguem o formato RFC 9457 (application/problem+json).""")
                 .license(new License().name("MIT")));
