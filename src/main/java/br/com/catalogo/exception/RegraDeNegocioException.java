@@ -1,16 +1,17 @@
 package br.com.catalogo.exception;
 
 /**
- * Lançada quando a requisição é sintaticamente válida, mas conflita com o estado
- * atual do sistema: SKU repetido, saldo insuficiente, categoria em uso.
+ * Base de toda regra de negócio violada: a requisição está bem formada, mas o
+ * estado atual não permite atendê-la. O {@link TratadorGlobalDeErros} a converte
+ * em {@code 409 Conflict}.
  *
- * <p>Traduzida pelo handler global em {@code 409 Conflict}. A distinção em relação
- * ao {@code 400} é proposital: {@code 400} diz "seu payload está errado", enquanto
- * {@code 409} diz "seu payload está certo, mas o estado do servidor não permite".
+ * <p>Abstrata pelo mesmo motivo de {@link RecursoNaoEncontradoException}: cada
+ * regra tem sua própria exceção ({@link SkuEmUsoException}), e o tratador não muda
+ * quando uma regra nova aparece.
  */
-public class RegraDeNegocioException extends RuntimeException {
+public abstract class RegraDeNegocioException extends RuntimeException {
 
-    public RegraDeNegocioException(String mensagem) {
+    protected RegraDeNegocioException(String mensagem) {
         super(mensagem);
     }
 }

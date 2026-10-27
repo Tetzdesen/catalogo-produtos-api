@@ -22,3 +22,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Ferramentas de planejamento e do assistente (ficam só na máquina local)
+openspec/
+.claude/

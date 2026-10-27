@@ -1,20 +1,18 @@
 package br.com.catalogo.exception;
 
 /**
- * Lançada quando um recurso referenciado por id (ou por outra chave) não existe.
+ * Base de todo "o recurso pedido não existe". O {@link TratadorGlobalDeErros} a
+ * converte em {@code 404 Not Found}.
  *
- * <p>Traduzida pelo handler global em {@code 404 Not Found}. Existe para que o
- * service possa sinalizar a ausência sem conhecer nada de HTTP — quem conhece
- * status code é a camada de borda, não a regra de negócio.
+ * <p><b>Por que abstrata?</b> Para obrigar quem lança a dizer <i>qual</i> recurso
+ * faltou ({@link ProdutoNaoEncontradoException}, e amanhã uma
+ * {@code CategoriaNaoEncontradaException}). O tratador continua olhando só para
+ * esta base: uma subclasse nova vira {@code 404} sem que ninguém precise editá-lo.
+ * É o princípio aberto/fechado (o "O" de SOLID) aplicado às exceções.
  */
-public class RecursoNaoEncontradoException extends RuntimeException {
+public abstract class RecursoNaoEncontradoException extends RuntimeException {
 
-    public RecursoNaoEncontradoException(String mensagem) {
+    protected RecursoNaoEncontradoException(String mensagem) {
         super(mensagem);
-    }
-
-    public static RecursoNaoEncontradoException de(String recurso, Object identificador) {
-        return new RecursoNaoEncontradoException(
-                "%s não encontrado(a) para o identificador '%s'.".formatted(recurso, identificador));
     }
 }

@@ -24,7 +24,7 @@
 
     <properties>
         <java.version>21</java.version>
-        <!-- springdoc 3.1.1 é construído sobre Spring Boot 4.1.x (ver README, decisão 12). -->
+        <!-- springdoc 3.1.1 é a linha construída sobre o Spring Boot 4.1.x. -->
         <springdoc.version>3.1.1</springdoc.version>
     </properties>
 
@@ -48,7 +48,8 @@
         </dependency>
 
         <!--
-          Migrações de schema versionadas (decisão 8).
+          Migrações de schema versionadas: o schema é responsabilidade do Flyway,
+          nunca do Hibernate (ver 'ddl-auto: validate' no application.yml).
           No Spring Boot 4 a auto-configuração do Flyway saiu do jar 'autoconfigure'
           e passou a viver em um starter próprio: declarar apenas 'flyway-core'
           compila, mas as migrações nunca rodam.
@@ -70,75 +71,40 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- OpenAPI/Swagger gerado a partir dos controllers (decisão 12). -->
+        <!--
+          Gera a documentação OpenAPI e o Swagger UI a partir dos próprios
+          controllers e payloads: a documentação acompanha o código por construção,
+          em vez de divergir dele na primeira semana.
+        -->
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
             <version>${springdoc.version}</version>
         </dependency>
 
-        <!-- JUnit 5, Mockito, AssertJ e MockMvc. -->
+        <!--
+          JUnit 5, Mockito e AssertJ para os testes unitários. Escopo 'test': entra
+          na compilação e na execução dos testes, mas não vai para o jar final.
+        -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
 
-        <!--
-          No Spring Boot 4 cada fatia de teste virou um módulo próprio: o
-          starter-test sozinho não traz mais @DataJpaTest nem @AutoConfigureMockMvc.
-        -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-data-jpa-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-webmvc-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-jdbc-test</artifactId>
-            <scope>test</scope>
-        </dependency>
-
-        <!-- Banco em memória usado pela suíte de testes (decisão 9). -->
-        <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
-            <scope>test</scope>
-        </dependency>
     </dependencies>
 
     <build>
         <plugins>
+            <!--
+              Empacota a aplicação em um jar executável e é quem responde por
+              'mvn spring-boot:run'.
+            -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
-
-            <!--
-              Duas suítes, dois momentos:
-              - surefire (fase 'test') roda *Test — os testes unitários, rápidos;
-              - failsafe (fase 'verify') roda *IT — os testes de integração, que
-                sobem o contexto do Spring.
-              O parent já gerencia a versão e a configuração do failsafe; só falta
-              ativá-lo. 'mvn test' dá retorno em segundos, 'mvn verify' roda tudo.
-            -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-failsafe-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <goals>
-                            <goal>integration-test</goal>
-                            <goal>verify</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
         </plugins>
     </build>
+
 </project>

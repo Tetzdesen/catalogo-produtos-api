@@ -1,10 +1,19 @@
+# =============================================================================
+# Configuração da aplicação.
+# =============================================================================
+# O Spring Boot lê este arquivo no start e usa cada chave para configurar um
+# pedaço do framework. Quase tudo aqui tem um valor padrão razoável; o que está
+# escrito é o que decidimos mudar — e cada bloco explica por quê.
+
 spring:
   application:
     name: catalogo-produtos-api
 
   datasource:
-    # Credenciais vêm do ambiente (ver .env.example). Os valores padrão existem
-    # apenas para o desenvolvimento local com o docker-compose deste repositório.
+    # A sintaxe ${VARIAVEL:padrao} lê uma variável de ambiente e, se ela não
+    # existir, usa o valor depois dos dois-pontos. Os padrões abaixo batem com o
+    # serviço do docker-compose.yml deste repositório — por isso 'docker compose
+    # up -d' seguido de 'mvn spring-boot:run' funciona sem configurar nada.
     url: ${DB_URL:jdbc:postgresql://localhost:5432/catalogo}
     username: ${DB_USER:catalogo}
     password: ${DB_PASSWORD:catalogo}
@@ -12,14 +21,20 @@ spring:
   jpa:
     hibernate:
       # 'validate' e nunca 'update': o schema é responsabilidade do Flyway.
-      # Divergência entre entidade e tabela derruba a aplicação no start,
-      # em vez de virar erro em produção.
+      # No start, o Hibernate compara cada entidade com a tabela correspondente e
+      # derruba a aplicação se houver divergência. É uma rede de segurança que
+      # transforma erro de mapeamento em falha imediata e barulhenta, em vez de
+      # um erro obscuro na primeira requisição que tocar a coluna errada.
       ddl-auto: validate
-    # Sessão aberta na camada de view esconde N+1 e permite lazy loading no
-    # controller. Desligado de propósito: quem precisa do dado carrega no service.
+    # 'open in view' mantém a sessão do Hibernate aberta até a resposta HTTP ser
+    # escrita. Parece conveniente, mas esconde problemas: consultas disparadas na
+    # serialização do JSON (o famoso N+1) ficam invisíveis, e código do controller
+    # passa a depender de uma sessão que deveria ter fechado no service.
+    # Desligado de propósito: quem precisa do dado carrega dentro da transação.
     open-in-view: false
     properties:
       hibernate:
+        # Grava e lê timestamps em UTC, independentemente do fuso do servidor.
         jdbc:
           time_zone: UTC
 
@@ -30,11 +45,15 @@ spring:
   data:
     web:
       pageable:
+        # Página padrão quando o cliente não informa ?size=
         default-page-size: 20
-        # Teto de página: impede que um cliente peça ?size=100000 e derrube a API.
+        # Teto de página. Sem ele, um cliente pedindo ?size=1000000 faria a API
+        # tentar carregar a tabela inteira na memória de uma vez. Acima do teto,
+        # o Spring aplica 100 silenciosamente em vez de devolver erro.
         max-page-size: 100
 
-# Prefixo aplicado a todos os controllers do pacote 'controller' (ver ApiConfig).
+# Propriedade nossa (não é do Spring): o prefixo de versão da API, aplicado a
+# todos os controllers de uma vez pela classe ApiConfig.
 api:
   base-path: /api/v1
 
@@ -44,6 +63,8 @@ springdoc:
 
 server:
   error:
-    # Stack trace nunca vaza para o cliente; o corpo de erro é o ProblemDetail.
+    # O rastro de pilha nunca vai para o cliente: revela estrutura interna e
+    # versões de biblioteca a quem quiser explorá-las. O corpo de erro que o
+    # cliente recebe é o ProblemDetail montado pelo TratadorGlobalDeErros.
     include-stacktrace: never
     include-message: never
