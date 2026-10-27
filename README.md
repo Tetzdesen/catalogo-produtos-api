@@ -132,7 +132,7 @@ src/main/resources/
 ├── application.yml       configuração comum (sem credenciais)
 ├── application-dev.yml   conexão com o banco local, só no perfil dev
 └── db/migration/V1__criar_tabelas.sql
-src/test/java/br/com/catalogo/   testes unitários, sem Spring e sem banco
+src/test/java/br/com/catalogo/   unitários, de segurança (SegurancaTest) e de integração (ProdutoApiIT)
 ```
 
 Uma requisição de cadastro percorre:
@@ -197,7 +197,8 @@ implementação (ou um decorador) e uma segunda regra.
 ## Testes
 
 ```bash
-mvn test
+mvn test     # unitários e de segurança: rápidos, sem Docker
+mvn verify   # tudo, inclusive o teste de integração (precisa de Docker)
 ```
 
 Testes unitários com JUnit 5, Mockito e AssertJ, sem subir o Spring nem o banco:
@@ -208,8 +209,13 @@ Testes unitários com JUnit 5, Mockito e AssertJ, sem subir o Spring nem o banco
 confere as regras de acesso: `GET` público, escrita com `401` sem token e
 aceita com token.
 
-O resto do comportamento HTTP de ponta a ponta é conferido subindo a aplicação
-e usando os exemplos de `curl` abaixo.
+`ProdutoApiIT` é o teste de integração: sobe a aplicação inteira contra um
+PostgreSQL de verdade, criado pelo Testcontainers em um contêiner Docker. Ele
+cobre o que só o banco faz: a migração do Flyway, a busca com `unaccent`, o
+escape do `%` e do `_` no `LIKE`, a ordenação, o SKU único e a gravação da
+atualização no commit. A segurança fica de fora (já está no `SegurancaTest`): as
+escritas usam um usuário autenticado de teste. Por terminar em `IT`, quem roda
+esta classe é o Failsafe, só no `mvn verify`.
 
 ---
 
@@ -311,24 +317,20 @@ Todo erro sai no formato da RFC 9457, com `Content-Type: application/problem+jso
 
 ## Evoluções naturais
 
-1. **Testes de controller e de integração.** Fora o `SegurancaTest`, os testes
-   são unitários. O próximo passo é cobrir o resto da camada HTTP com
-   `@WebMvcTest` e usar `@SpringBootTest` com Testcontainers para rodar contra
-   um PostgreSQL de verdade.
-2. **Permissões por papel ou *scope*.** Hoje qualquer token válido escreve. Para
+1. **Permissões por papel ou *scope*.** Hoje qualquer token válido escreve. Para
    separar, por exemplo, quem cadastra de quem só exclui, a `SegurancaConfig`
    passa a exigir `hasAuthority("SCOPE_catalogo:escrita")` nas rotas certas, e o
    `403` começa a ser usado.
-3. **Controle de concorrência.** Duas atualizações simultâneas do mesmo produto
+2. **Controle de concorrência.** Duas atualizações simultâneas do mesmo produto
    se sobrescrevem (vence a última). Um campo `@Version` faria a segunda receber
    `409`.
-4. **Índice para a busca por nome.** A busca lê a tabela inteira, o que é
+3. **Índice para a busca por nome.** A busca lê a tabela inteira, o que é
    irrelevante para um catálogo pequeno. Com muitos produtos, o caminho é um
    índice GIN com a extensão `pg_trgm`.
-5. **Categorias.** O recurso existia em versões anteriores do projeto e pode
+4. **Categorias.** O recurso existia em versões anteriores do projeto e pode
    voltar como um segundo recurso, com vínculo obrigatório do produto (e com o
    código organizado por funcionalidade: `produto/`, `categoria/`).
-6. **Arquitetura hexagonal.** Quando o domínio crescer a ponto de valer
+5. **Arquitetura hexagonal.** Quando o domínio crescer a ponto de valer
    isolá-lo do JPA e do Spring, o passo seguinte é separar a entidade de negócio
    da entidade de persistência e declarar o repositório como uma porta.
 
@@ -347,6 +349,7 @@ Todo erro sai no formato da RFC 9457, com `Content-Type: application/problem+jso
 | Keycloak | 26.4 | Provedor de identidade, só em desenvolvimento |
 | springdoc-openapi | 3.1.1 | Documentação OpenAPI |
 | JUnit 5 / Mockito / AssertJ | via Boot | Testes unitários |
+| Testcontainers | via Boot | PostgreSQL em Docker para o teste de integração |
 
 **Nota sobre o Spring Boot 4:** as auto-configurações foram divididas em módulos
 próprios. Declarar apenas `flyway-core` compila, mas as migrações nunca rodam — é

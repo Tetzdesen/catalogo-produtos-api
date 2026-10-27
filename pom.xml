@@ -127,6 +127,27 @@
             <scope>test</scope>
         </dependency>
 
+        <!--
+          Testcontainers sobe um PostgreSQL de verdade em Docker para o teste de
+          integração (ProdutoApiIT). O spring-boot-testcontainers liga a aplicação
+          ao contêiner sozinho, pela anotação @ServiceConnection.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -147,6 +168,17 @@
                         <profile>dev</profile>
                     </profiles>
                 </configuration>
+            </plugin>
+
+            <!--
+              Roda os testes de integração (classes terminadas em IT) na fase
+              'verify', depois dos unitários. Assim 'mvn test' continua rápido e
+              sem Docker, e 'mvn verify' roda tudo. A configuração vem pronta do
+              spring-boot-starter-parent; declarar o plugin só o liga.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
             </plugin>
         </plugins>
     </build>
