@@ -24,6 +24,11 @@ mvn spring-boot:run
 - API: `http://localhost:8080/api/v1/produtos`
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
 - Spec OpenAPI: `http://localhost:8080/v3/api-docs`
+- Health check: `http://localhost:8080/actuator/health`
+
+O `mvn spring-boot:run` ativa o perfil `dev` (`application-dev.yml`), que traz a
+conexão com o banco do `docker-compose.yml`. Rodando pela IDE, ative o perfil com
+`SPRING_PROFILES_ACTIVE=dev`.
 
 > **Já tem um PostgreSQL instalado na máquina?** Ele provavelmente ocupa a porta
 > 5432, e o contêiner vai falhar ao subir. Ou você para o serviço local, ou usa o
@@ -40,6 +45,32 @@ mvn spring-boot:run
 > ```bash
 > docker compose down -v && docker compose up -d
 > ```
+
+---
+
+## Como subir em produção
+
+Fora do perfil `dev`, **não existe conexão padrão**: `DB_URL`, `DB_USER` e
+`DB_PASSWORD` são obrigatórias. Faltando alguma, a aplicação não sobe. O erro
+que aparece é pouco direto (`'url' must start with "jdbc"` ou falha de
+autenticação no banco), mas é proposital: assim ela nunca tenta conectar com a
+senha de desenvolvimento.
+
+```bash
+docker build -t catalogo-produtos-api .
+docker run -p 8080:8080 \
+  -e DB_URL=jdbc:postgresql://<host>:5432/catalogo \
+  -e DB_USER=<usuario> -e DB_PASSWORD=<senha> \
+  catalogo-produtos-api
+```
+
+- O contêiner roda com um usuário sem privilégios.
+- Para o orquestrador: `/actuator/health/liveness` e `/actuator/health/readiness`.
+  Nenhum outro endpoint do actuator fica exposto.
+- O usuário do banco precisa poder criar a extensão `unaccent` na primeira
+  migração. Em bancos gerenciados (RDS, Cloud SQL etc.), confira as permissões.
+- **A API não tem autenticação.** Exponha-a só atrás de um gateway ou em rede
+  interna, ou acrescente o Spring Security antes de abri-la ao público.
 
 ---
 
@@ -62,7 +93,8 @@ src/main/java/br/com/catalogo/
 ├── exception/      exceções-base, exceções específicas e o TratadorGlobalDeErros
 └── config/         ApiConfig (prefixo /api/v1), OpenApiConfig
 src/main/resources/
-├── application.yml
+├── application.yml       configuração comum (sem credenciais)
+├── application-dev.yml   conexão com o banco local, só no perfil dev
 └── db/migration/V1__criar_tabelas.sql
 src/test/java/br/com/catalogo/   testes unitários, sem Spring e sem banco
 ```
@@ -162,6 +194,8 @@ Todos sob `/api/v1`.
   maiúsculas, minúsculas e acentos: `cafe` encontra "Café Torrado" e
   "CAFETEIRA".
 - Página padrão de 20 itens e teto de 100: `?size=100000` devolve 100.
+- `?sort=` aceita `id`, `sku`, `nome`, `descricao`, `preco` e `ativo`. Qualquer
+  outro campo devolve `400`.
 
 ---
 
@@ -222,7 +256,7 @@ Todo erro sai no formato da RFC 9457, com `Content-Type: application/problem+jso
 
 | Código | Quando |
 |---|---|
-| `400` | O pedido está errado: campo inválido ou faltando, JSON malformado, id não numérico |
+| `400` | O pedido está errado: campo inválido ou faltando, JSON malformado, id não numérico, ordenação por campo desconhecido |
 | `404` | O produto não existe |
 | `409` | O pedido está certo, mas conflita com o estado atual: SKU já usado por outro produto |
 | `500` | Erro inesperado; o rastro de pilha vai para o log, nunca para a resposta |

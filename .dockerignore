@@ -1,0 +1,8 @@
+# Só o pom.xml e o src/ precisam entrar no build da imagem.
+target/
+.git/
+.idea/
+.vscode/
+.env
+openspec/
+.claude/

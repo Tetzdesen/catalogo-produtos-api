@@ -10,13 +10,14 @@ spring:
     name: catalogo-produtos-api
 
   datasource:
-    # A sintaxe ${VARIAVEL:padrao} lê uma variável de ambiente e, se ela não
-    # existir, usa o valor depois dos dois-pontos. Os padrões abaixo batem com o
-    # serviço do docker-compose.yml deste repositório — por isso 'docker compose
-    # up -d' seguido de 'mvn spring-boot:run' funciona sem configurar nada.
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/catalogo}
-    username: ${DB_USER:catalogo}
-    password: ${DB_PASSWORD:catalogo}
+    # ${VARIAVEL} lê uma variável de ambiente. Aqui de propósito SEM valor
+    # padrão: se o ambiente esquecer de definir alguma, a aplicação se recusa a
+    # subir, em vez de tentar conectar com uma senha de desenvolvimento.
+    # Os padrões locais (que batem com o docker-compose.yml) ficam no perfil
+    # 'dev', em application-dev.yml, ativado pelo 'mvn spring-boot:run'.
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
 
   jpa:
     hibernate:
@@ -60,6 +61,22 @@ api:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Só o health check sai na web. Endpoints como 'env' e 'heapdump'
+        # entregariam configuração e memória do processo a quem pedisse.
+        include: health
+  endpoint:
+    health:
+      # Expõe /actuator/health/liveness e /actuator/health/readiness, os dois
+      # que orquestradores (Kubernetes, ECS) usam para decidir se reiniciam o
+      # contêiner e se mandam tráfego para ele. Sozinho, o Spring só os liga
+      # quando detecta Kubernetes; aqui ficam ligados em qualquer ambiente.
+      probes:
+        enabled: true
 
 server:
   error:

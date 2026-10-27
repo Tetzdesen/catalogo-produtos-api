@@ -13,6 +13,7 @@ import static org.mockito.Mockito.when;
 import br.com.catalogo.dto.PaginaResponse;
 import br.com.catalogo.dto.ProdutoRequest;
 import br.com.catalogo.dto.ProdutoResponse;
+import br.com.catalogo.exception.OrdenacaoInvalidaException;
 import br.com.catalogo.exception.ProdutoNaoEncontradoException;
 import br.com.catalogo.exception.SkuEmUsoException;
 import br.com.catalogo.mapper.ProdutoMapper;
@@ -27,6 +28,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 /**
  * O service montado com {@code new}, sem Spring: o repositório e a regra são
@@ -124,5 +126,26 @@ class ProdutoServiceImplTest {
 
         assertThat(pagina.conteudo()).extracting(ProdutoResponse::nome).containsExactly("Café Torrado");
         assertThat(pagina.totalElementos()).isEqualTo(1);
+    }
+
+    @Test
+    void listarOrdenadoPorCampoDoContratoConsultaORepositorio() {
+        Pageable paginacao = PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "preco"));
+        when(repositorio.findAll(paginacao)).thenReturn(Page.empty(paginacao));
+
+        service.listar(null, paginacao);
+
+        verify(repositorio).findAll(paginacao);
+    }
+
+    @Test
+    void listarOrdenadoPorCampoDesconhecidoLancaOrdenacaoInvalidaSemConsultar() {
+        Pageable paginacao = PageRequest.of(0, 20, Sort.by("inexistente"));
+
+        assertThatThrownBy(() -> service.listar("cafe", paginacao))
+                .isInstanceOf(OrdenacaoInvalidaException.class)
+                .hasMessageContaining("'inexistente'");
+        verify(repositorio, never()).findAll(any(Pageable.class));
+        verify(repositorio, never()).buscarPorNome(anyString(), any());
     }
 }

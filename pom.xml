@@ -83,6 +83,15 @@
         </dependency>
 
         <!--
+          Health check em /actuator/health, para o orquestrador saber se a
+          aplicação está viva. Só esse endpoint é exposto (ver application.yml).
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!--
           JUnit 5, Mockito e AssertJ para os testes unitários. Escopo 'test': entra
           na compilação e na execução dos testes, mas não vai para o jar final.
         -->
@@ -99,10 +108,19 @@
             <!--
               Empacota a aplicação em um jar executável e é quem responde por
               'mvn spring-boot:run'.
+
+              O perfil 'dev' vale só para o 'spring-boot:run': é ele que traz a
+              conexão com o banco do docker-compose. O jar não carrega perfil
+              nenhum e exige as variáveis DB_*.
             -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <profiles>
+                        <profile>dev</profile>
+                    </profiles>
+                </configuration>
             </plugin>
         </plugins>
     </build>
