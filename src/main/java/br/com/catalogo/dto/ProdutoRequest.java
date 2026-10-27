@@ -1,6 +1,5 @@
 package br.com.catalogo.dto;
 
-import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -9,40 +8,41 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 
 /**
- * Dados de entrada para criar ou atualizar um produto.
+ * O corpo aceito no cadastro ({@code POST}) e na atualização ({@code PUT}).
  *
- * <p>Na atualização o SKU continua sendo aceito no corpo — e comparado com o atual
- * — para que uma tentativa de alterá-lo receba uma resposta explícita
- * ({@code 409}) em vez de ser ignorada em silêncio.
+ * <p>As anotações são do Bean Validation: com {@code @Valid} no parâmetro do
+ * controller, o Spring confere cada regra antes de chamar o método e, se alguma
+ * falhar, responde {@code 400} sem que o service chegue a rodar.
  *
- * <p>{@code @Digits(integer = 10, fraction = 2)} espelha a coluna
- * {@code NUMERIC(12,2)}: preço com três casas é rejeitado na borda, e não pelo
- * arredondamento do banco.
+ * <p>{@code ativo} só é lido na atualização. No cadastro é ignorado, porque todo
+ * produto nasce ativo; na atualização é obrigatório. Para a mesma classe servir
+ * aos dois casos, o {@code @NotNull} de {@code ativo} pertence ao grupo
+ * {@link Atualizacao}: ele só é conferido quando o controller pede esse grupo,
+ * o que acontece apenas no {@code PUT}.
  */
-@Schema(description = "Dados de criação ou atualização de um produto")
 public record ProdutoRequest(
 
-        @Schema(example = "MART-001", description = "Identificador de negócio, único e imutável")
-        @NotBlank(message = "O SKU é obrigatório.")
-        @Size(max = 40, message = "O SKU deve ter no máximo 40 caracteres.")
+        @NotBlank @Size(max = 40)
         String sku,
 
-        @Schema(example = "Martelo de unha 25mm")
-        @NotBlank(message = "O nome é obrigatório.")
-        @Size(min = 2, max = 120, message = "O nome deve ter entre 2 e 120 caracteres.")
+        @NotBlank @Size(max = 120)
         String nome,
 
-        @Schema(example = "Cabo de madeira, 500g")
-        @Size(max = 500, message = "A descrição deve ter no máximo 500 caracteres.")
+        @Size(max = 500)
         String descricao,
 
-        @Schema(example = "49.90")
-        @NotNull(message = "O preço é obrigatório.")
-        @Positive(message = "O preço deve ser maior que zero.")
-        @Digits(integer = 10, fraction = 2, message = "O preço deve ter no máximo duas casas decimais.")
+        // @Digits recusa 10.999 em vez de arredondar para 11.00 sem avisar.
+        @NotNull @Positive
+        @Digits(integer = 10, fraction = 2, message = "deve ter no máximo 10 dígitos inteiros e 2 casas decimais")
         BigDecimal preco,
 
-        @Schema(example = "1")
-        @NotNull(message = "A categoria é obrigatória.")
-        Long categoriaId) {
+        @NotNull(groups = Atualizacao.class)
+        Boolean ativo) {
+
+    /**
+     * Grupo de validação das regras que só valem na atualização. Uma interface
+     * vazia: serve apenas de etiqueta para o Bean Validation.
+     */
+    public interface Atualizacao {
+    }
 }

@@ -1,23 +1,11 @@
 # catalogo-produtos-api
 
-API REST para catálogo de produtos e controle de estoque, em Spring Boot.
+API REST básica de catálogo de produtos em Spring Boot: um único recurso,
+**Produto**, com cadastro, consulta, listagem paginada com busca por nome,
+atualização e exclusão.
 
-Este README não documenta apenas **como** usar a API — ele explica **por que** cada
-escolha técnica foi feita, e o que foi descartado no caminho. Se você veio pelo
-código, a seção [Decisões](#decisões) é o mapa.
-
----
-
-## O que a API faz
-
-| Recurso | Operações |
-|---|---|
-| **Categorias** | CRUD completo; exclusão bloqueada quando há produtos vinculados |
-| **Produtos** | CRUD, listagem paginada com filtros combináveis, ativação/inativação |
-| **Estoque** | Entrada, saída e ajuste de inventário; histórico imutável por produto |
-
-O saldo de estoque **nunca** é editado diretamente: ele só muda através de uma
-movimentação registrada, e toda movimentação fica no histórico.
+O código é pequeno de propósito — dá para ler de ponta a ponta em poucos
+minutos — e cada arquivo é comentado explicando *por que* está ali.
 
 ---
 
@@ -29,132 +17,194 @@ movimentação registrada, e toda movimentação fica no histórico.
 # 1. Sobe o PostgreSQL
 docker compose up -d
 
-# 2. Sobe a aplicação (as migrações do Flyway rodam sozinhas no start)
+# 2. Sobe a aplicação (o Flyway cria a tabela sozinho no start)
 mvn spring-boot:run
 ```
 
-- API: `http://localhost:8080/api/v1`
+- API: `http://localhost:8080/api/v1/produtos`
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
 - Spec OpenAPI: `http://localhost:8080/v3/api-docs`
 
-As credenciais do banco vêm do ambiente (veja `.env.example`); os valores padrão
-já correspondem ao serviço do `docker-compose.yml`.
+> **Já tem um PostgreSQL instalado na máquina?** Ele provavelmente ocupa a porta
+> 5432, e o contêiner vai falhar ao subir. Ou você para o serviço local, ou usa o
+> banco que já tem: crie o papel e o banco (`CREATE USER catalogo WITH PASSWORD
+> 'catalogo'` e `CREATE DATABASE catalogo OWNER catalogo`) e pule o
+> `docker compose`. O usuário precisa ser **dono** do banco, porque a migração
+> cria a extensão `unaccent`. A conexão também pode ser trocada pelas variáveis
+> `DB_URL`, `DB_USER` e `DB_PASSWORD`.
 
-### Testes
+> **Vindo de uma versão anterior deste projeto?** A migração `V1` foi reescrita, e
+> o Flyway guarda um *checksum* dela. Em uma base já criada, o start vai falhar
+> acusando a divergência. Recrie o banco do zero:
+>
+> ```bash
+> docker compose down -v && docker compose up -d
+> ```
 
-```bash
-mvn test     # testes unitários (rápidos)
-mvn verify   # unitários + integração
+---
+
+## Estrutura
+
+A API segue as camadas clássicas de uma aplicação Spring (MVC). Dentro delas,
+cada classe tem um papel só, e os princípios SOLID aparecem em lugares que dá
+para apontar.
+
+```
+src/main/java/br/com/catalogo/
+├── CatalogoProdutosApiApplication.java   ponto de entrada
+├── controller/     ProdutoController — só HTTP: rotas, status, cabeçalhos
+├── service/        ProdutoService (interface) e ProdutoServiceImpl — orquestra e abre a transação
+│   └── regra/      RegraDeProduto (interface) e SkuUnicoRegra — uma regra de negócio por classe
+├── repository/     ProdutoRepository — gerado pelo Spring Data; também escapa o LIKE
+├── model/          Produto — a entidade JPA, com o próprio comportamento
+├── dto/            ProdutoRequest, ProdutoResponse, PaginaResponse — o contrato JSON
+├── mapper/         ProdutoMapper — converte DTO ↔ entidade
+├── exception/      exceções-base, exceções específicas e o TratadorGlobalDeErros
+└── config/         ApiConfig (prefixo /api/v1), OpenApiConfig
+src/main/resources/
+├── application.yml
+└── db/migration/V1__criar_tabelas.sql
+src/test/java/br/com/catalogo/   testes unitários, sem Spring e sem banco
 ```
 
-**A suíte não precisa de Docker nem de banco externo** — roda inteira em H2 em
-memória. Isso é uma decisão, não um acaso; veja a [decisão 9](#9-h2-nos-testes-postgresql-para-rodar).
+Uma requisição de cadastro percorre:
+
+```
+ProdutoController ──▶ ProdutoService (interface)
+                          │  implementada por ProdutoServiceImpl
+                          ├──▶ RegraDeProduto* (SkuUnicoRegra, ...)  ──▶ ProdutoRepository
+                          ├──▶ ProdutoMapper  (request → Produto)
+                          ├──▶ ProdutoRepository.save(...)
+                          └──▶ ProdutoMapper  (Produto → response)
+          erro em qualquer ponto ──▶ TratadorGlobalDeErros ──▶ application/problem+json
+```
+
+**Ordem de leitura sugerida:** `ProdutoController` → `ProdutoService` →
+`ProdutoServiceImpl` → `RegraDeProduto` e `SkuUnicoRegra` → `ProdutoRepository`
+→ `Produto` → `ProdutoMapper` → `TratadorGlobalDeErros`. Cada arquivo explica,
+nos comentários, *por que* está ali.
+
+### SOLID: onde cada princípio aparece
+
+| Princípio | Onde aparece no código |
+|---|---|
+| **S** — Responsabilidade única | O controller só traduz HTTP; o service só coordena; o mapper só converte; cada regra valida uma coisa; o repositório é o único que conhece SQL (inclusive o escape do `LIKE`); as exceções montam as próprias mensagens |
+| **O** — Aberto/fechado | Regra nova = classe nova que implementa `RegraDeProduto`, sem editar o service. Exceção nova que estende `RecursoNaoEncontradoException` ou `RegraDeNegocioException` já sai como `404`/`409`, sem editar o tratador |
+| **L** — Substituição de Liskov | Qualquer `RegraDeProduto` funciona na lista do service; qualquer subclasse das exceções-base funciona no tratador. Os testes trocam as implementações reais por *mocks* e o service nem percebe |
+| **I** — Segregação de interfaces | `RegraDeProduto` tem um método só; o controller enxerga apenas os cinco métodos de `ProdutoService`, nada da implementação |
+| **D** — Inversão de dependência | O controller depende da interface `ProdutoService`; o service depende de `List<RegraDeProduto>` e de `ProdutoRepository` (interfaces). Tudo chega pelo construtor, injetado pelo Spring, e por isso os testes montam o service com `new` |
+
+### Padrões de projeto
+
+**Usados:**
+
+| Padrão | Onde |
+|---|---|
+| MVC e arquitetura em camadas | A organização dos pacotes |
+| Front Controller | O `DispatcherServlet` do Spring, que recebe toda requisição e a despacha ao controller certo |
+| Injeção de dependência | Construtores de controller, service, regra e mapper |
+| Repository | `ProdutoRepository` (Spring Data) |
+| DTO | `ProdutoRequest`, `ProdutoResponse`, `PaginaResponse` |
+| Mapper | `ProdutoMapper` |
+| Strategy | `RegraDeProduto` e suas implementações |
+| Static Factory Method | `Produto.novo(...)`: o nome conta que o produto nasce ativo |
+| Template Method | `TratadorGlobalDeErros` estende `ResponseEntityExceptionHandler` e sobrescreve só alguns passos |
+
+**Deliberadamente não usados:**
+
+| Padrão | Por quê |
+|---|---|
+| Builder | O produto tem quatro campos de entrada; um construtor/fábrica é suficiente |
+| Observer / eventos | Nada no sistema precisa reagir a mudanças de produto |
+| Facade | O service já é a fachada da camada de negócio |
+| Hexagonal (Ports & Adapters) | Separaria domínio de entidade JPA e criaria portas; para um único recurso, a estrutura extra afasta quem está começando |
+
+Duas escolhas são em parte didáticas, e vale dizer isso: a **interface
+`ProdutoService`** tem uma única implementação, e o **Strategy** tem uma única
+regra. Elas passam a se pagar de verdade quando aparece uma segunda
+implementação (ou um decorador) e uma segunda regra.
+
+---
+
+## Testes
+
+```bash
+mvn test
+```
+
+Testes unitários com JUnit 5, Mockito e AssertJ, sem subir o Spring nem o banco:
+`ProdutoTest`, `ProdutoMapperTest`, `SkuUnicoRegraTest` e
+`ProdutoServiceImplTest`. O comportamento HTTP de ponta a ponta é conferido
+subindo a aplicação e usando os exemplos de `curl` abaixo.
 
 ---
 
 ## Endpoints
 
-### Categorias
+Todos sob `/api/v1`.
 
-| Método | Caminho | Resposta |
+| Método | Rota | Resposta de sucesso |
 |---|---|---|
-| `POST` | `/api/v1/categorias` | `201` + `Location` |
-| `GET` | `/api/v1/categorias?page=&size=` | `200` página |
-| `GET` | `/api/v1/categorias/{id}` | `200` / `404` |
-| `PUT` | `/api/v1/categorias/{id}` | `200` / `404` / `409` |
-| `DELETE` | `/api/v1/categorias/{id}` | `204` / `409` se tiver produtos |
+| `POST` | `/produtos` | `201` + cabeçalho `Location` |
+| `GET` | `/produtos/{id}` | `200` |
+| `GET` | `/produtos?nome=&page=&size=&sort=` | `200` com a página |
+| `PUT` | `/produtos/{id}` | `200` |
+| `DELETE` | `/produtos/{id}` | `204` |
 
-### Produtos
-
-| Método | Caminho | Resposta |
-|---|---|---|
-| `POST` | `/api/v1/produtos` | `201` + `Location` |
-| `GET` | `/api/v1/produtos` | `200` página |
-| `GET` | `/api/v1/produtos/{id}` | `200` / `404` |
-| `PUT` | `/api/v1/produtos/{id}` | `200` / `409` se tentar mudar o SKU |
-| `PATCH` | `/api/v1/produtos/{id}/ativacao` | `200` |
-| `PATCH` | `/api/v1/produtos/{id}/inativacao` | `200` |
-| `DELETE` | `/api/v1/produtos/{id}` | `204` / `409` se tiver histórico |
-
-Filtros da listagem (todos opcionais e combináveis):
-`nome` (trecho, sem distinção de caixa), `categoriaId`, `precoMinimo`,
-`precoMaximo`, `ativo`.
-
-```
-GET /api/v1/produtos?nome=martelo&categoriaId=1&precoMinimo=40&precoMaximo=90&ativo=true&page=0&size=20
-```
-
-### Movimentações de estoque
-
-| Método | Caminho | Efeito |
-|---|---|---|
-| `POST` | `/api/v1/produtos/{id}/movimentacoes/entradas` | Soma ao saldo |
-| `POST` | `/api/v1/produtos/{id}/movimentacoes/saidas` | Subtrai do saldo; `409` se insuficiente |
-| `POST` | `/api/v1/produtos/{id}/movimentacoes/ajustes` | Define o saldo em valor absoluto |
-| `GET` | `/api/v1/produtos/{id}/movimentacoes?tipo=` | Histórico, mais recente primeiro |
-
-Não existe `PUT` nem `DELETE` de movimentação — e isso é intencional
-([decisão 3](#3-estoque-como-histórico-de-movimentações-com-saldo-desnormalizado)).
+**Regras:**
+- `sku` (até 40 caracteres) é único no catálogo.
+- `nome` é obrigatório (até 120); `descricao` é opcional (até 500).
+- `preco` é maior que zero e tem no máximo duas casas decimais; `10.999` é
+  recusado, e não arredondado.
+- Todo produto nasce ativo. No `PUT`, todos os campos são enviados, inclusive
+  `ativo`, que passa a ser obrigatório.
+- A busca `?nome=` encontra o trecho em qualquer posição do nome e ignora
+  maiúsculas, minúsculas e acentos: `cafe` encontra "Café Torrado" e
+  "CAFETEIRA".
+- Página padrão de 20 itens e teto de 100: `?size=100000` devolve 100.
 
 ---
 
 ## Exemplos
 
-**Criar um produto**
-
 ```bash
-curl -X POST http://localhost:8080/api/v1/produtos \
+# Cadastrar
+curl -i -X POST http://localhost:8080/api/v1/produtos \
   -H 'Content-Type: application/json' \
-  -d '{"sku":"MART-001","nome":"Martelo de unha","preco":49.90,"categoriaId":1}'
-```
+  -d '{"sku":"CAF-001","nome":"Café Torrado","descricao":"Pacote 500g","preco":29.90}'
 
-```json
-{
-  "id": 1,
-  "sku": "MART-001",
-  "nome": "Martelo de unha",
-  "descricao": null,
-  "preco": 49.90,
-  "ativo": true,
-  "saldoEstoque": 0,
-  "categoria": { "id": 1, "nome": "Ferramentas", "descricao": "Itens de oficina" }
-}
-```
+# Consultar
+curl http://localhost:8080/api/v1/produtos/1
 
-**Registrar uma entrada**
+# Listar, buscando por nome, 10 por página, ordenado por preço
+curl 'http://localhost:8080/api/v1/produtos?nome=cafe&size=10&sort=preco,desc'
 
-```bash
-curl -X POST http://localhost:8080/api/v1/produtos/1/movimentacoes/entradas \
+# Atualizar (substitui todos os campos)
+curl -X PUT http://localhost:8080/api/v1/produtos/1 \
   -H 'Content-Type: application/json' \
-  -d '{"quantidade":10,"motivo":"Compra do fornecedor XYZ"}'
+  -d '{"sku":"CAF-001","nome":"Café Torrado Especial","preco":34.90,"ativo":false}'
+
+# Excluir
+curl -i -X DELETE http://localhost:8080/api/v1/produtos/1
 ```
+
+Resposta de um produto:
 
 ```json
-{
-  "id": 1,
-  "produtoId": 1,
-  "tipo": "ENTRADA",
-  "quantidade": 10,
-  "diferenca": 10,
-  "saldoResultante": 10,
-  "motivo": "Compra do fornecedor XYZ",
-  "dataHora": "2026-09-18T14:32:05.412Z"
-}
+{"id":1,"sku":"CAF-001","nome":"Café Torrado","descricao":"Pacote 500g","preco":29.90,"ativo":true}
 ```
 
-**Listagem paginada** — o envelope é sempre o mesmo:
+Resposta de uma listagem:
 
 ```json
-{
-  "conteudo": [ ... ],
-  "pagina": 0,
-  "tamanho": 20,
-  "totalElementos": 137,
-  "totalPaginas": 7
-}
+{"conteudo":[ ... ],"pagina":0,"tamanho":20,"totalElementos":1,"totalPaginas":1}
 ```
 
-**Erro de validação** (RFC 9457, `application/problem+json`):
+---
+
+## Erros
+
+Todo erro sai no formato da RFC 9457, com `Content-Type: application/problem+json`:
 
 ```json
 {
@@ -162,318 +212,40 @@ curl -X POST http://localhost:8080/api/v1/produtos/1/movimentacoes/entradas \
   "title": "Dados inválidos",
   "status": 400,
   "detail": "A requisição contém campos inválidos.",
-  "timestamp": "2026-09-18T14:33:10.882Z",
+  "instance": "/api/v1/produtos",
+  "timestamp": "2026-09-29T12:00:00Z",
   "campos": [
-    { "campo": "preco", "mensagem": "O preço deve ser maior que zero." },
-    { "campo": "sku", "mensagem": "O SKU é obrigatório." }
+    {"campo": "preco", "mensagem": "deve ser maior que 0"}
   ]
 }
 ```
 
-**Erro de conflito** (saldo insuficiente):
-
-```json
-{
-  "type": "urn:catalogo:erro:conflito",
-  "title": "Conflito com o estado atual",
-  "status": 409,
-  "detail": "Saldo insuficiente para o produto 'MART-001': disponível 10, solicitado 12.",
-  "timestamp": "2026-09-18T14:34:02.115Z"
-}
-```
-
-### Códigos de status
-
 | Código | Quando |
 |---|---|
-| `400` | O payload está errado — campo faltando, formato inválido, faixa de preço invertida |
-| `404` | O recurso referenciado não existe |
-| `409` | O payload está certo, mas o estado do servidor não permite — SKU duplicado, saldo insuficiente, categoria em uso |
-| `500` | Erro inesperado; a stack trace vai para o log, nunca para a resposta |
-
-A distinção entre `400` e `409` é deliberada: `400` diz "corrija o pedido",
-`409` diz "o pedido está correto, mas não cabe no estado atual".
-
----
-
-## Estrutura
-
-```
-src/main/java/br/com/catalogo/
-├── config/       ApiConfig (prefixo /api/v1), OpenApiConfig, RelogioConfig
-├── controller/   Borda HTTP: recebe, valida, delega, traduz
-├── domain/       Entidades JPA com as invariantes do negócio
-├── dto/          Records de entrada e saída, com Bean Validation
-├── exception/    Exceções de domínio + tratador global (RFC 9457)
-├── repository/   Spring Data + Specifications
-└── service/      Regras de negócio e fronteira transacional
-```
-
----
-
-## Decisões
-
-Cada seção abaixo responde três perguntas: **o que** foi feito, **por quê**, e
-**o que foi descartado**.
-
-### 1. Arquitetura em camadas, não hexagonal
-
-Quatro responsabilidades separadas: `controller` → `service` → `repository` → `domain`.
-
-**Por quê:** é o desenho que qualquer pessoa com Spring Boot no currículo lê sem
-tradução. O volume de regras aqui — três agregados, poucas invariantes — não paga
-o custo de inversão de dependência da arquitetura hexagonal.
-
-**Descartado:** hexagonal/clean (cerimônia desproporcional ao tamanho do domínio);
-organização por feature em vez de por camada (boa para times grandes, mas dilui o
-valor didático da separação).
-
-### 2. DTOs separados das entidades
-
-Entidades JPA nunca cruzam a fronteira HTTP. Os DTOs são `record`s, e a conversão
-é uma fábrica estática no próprio response (`ProdutoResponse.de(produto)`).
-
-**Por quê:** expor a entidade amarra o contrato público ao schema do banco e abre
-a porta para *mass assignment* — um cliente enviando `saldoEstoque` no POST de
-produto. `record` dá imutabilidade e `equals` de graça.
-
-**Descartado:** MapStruct (ótimo com dezenas de mapeamentos; aqui adicionaria
-geração de código e uma camada a explicar, para três agregados); uma classe
-`Mapper` separada por entidade (a fábrica estática mantém a conversão ao lado da
-estrutura que ela produz, sem um arquivo extra que só repassa campos).
-
-### 3. Estoque como histórico de movimentações, com saldo desnormalizado
-
-`MovimentacaoEstoque` é *append-only* (tipo, quantidade, diferença, saldo
-resultante, motivo, data). `Produto.saldoEstoque` guarda o saldo corrente. Os dois
-são escritos na mesma transação.
-
-**Por quê:** só o saldo responde "quantos tem", mas não responde "por quê" — e
-essa é a pergunta que se faz quando o inventário não bate. Só o histórico responde
-às duas, mas obriga a somar N linhas a cada leitura de produto. Manter o saldo
-desnormalizado torna a leitura O(1), e o histórico continua sendo a fonte de
-verdade para reconciliação.
-
-Cada movimentação guarda `diferenca` (o que foi somado ao saldo) **e**
-`saldoResultante` (quanto ficou). Isso permite auditar linha a linha sem
-recalcular nada — e foi o que o teste `ConsistenciaEstoqueIT` verifica.
-
-**Descartado:** *event sourcing* completo (complexidade de projeções e replay sem
-demanda que a justifique); um campo de quantidade editável direto no produto
-(perde a auditoria — quem mudou, quando e por quê deixam de existir).
-
-**Consequência:** não existe rota para alterar ou excluir movimentação. Corrigir
-um lançamento significa registrar um ajuste. A imutabilidade não é uma convenção
-escrita na documentação: é a ausência da rota.
-
-### 4. Concorrência: bloqueio pessimista na linha do produto
-
-`ProdutoRepository.findByIdParaAtualizacao` usa `@Lock(PESSIMISTIC_WRITE)`, ou
-seja, `SELECT ... FOR UPDATE`, dentro da transação que grava a movimentação.
-
-**Por quê:** toda movimentação é um ler-decidir-gravar. Sem bloqueio, duas saídas
-concorrentes leem o mesmo saldo 10, ambas aprovam uma baixa de 8, e o saldo fura.
-O teste `saidasConcorrentes` dispara seis saídas simultâneas de 3 unidades sobre
-um saldo de 10 e verifica que exatamente três passam.
-
-**Por que pessimista e não otimista:** a transação é curtíssima (um SELECT, um
-INSERT, um UPDATE). Com `@Version`, disputas legítimas devolveriam `409` ao
-cliente — ruim para um endpoint de alta frequência como baixa de estoque.
-
-**Descartado:** bloqueio otimista com `@Version` (mais erros visíveis ao cliente);
-`UPDATE ... SET saldo = saldo - :qtd WHERE saldo >= :qtd` atômico (eficiente, mas
-espalha a regra de negócio no SQL e dificulta uma mensagem de erro que informe o
-saldo disponível).
-
-**Trade-off aceito:** contenção sob carga alta concentrada no mesmo produto. A
-transação é mantida mínima — nenhuma chamada externa dentro dela.
-
-### 5. Erros no padrão RFC 9457
-
-Um único `@RestControllerAdvice` converte exceções em `ProblemDetail`, servido
-como `application/problem+json`.
-
-**Por quê:** é o formato padronizado que o Spring já suporta nativamente, então o
-cliente aprende uma única forma de ler erro. Centralizar no advice mantém os
-controllers com um caminho só — o feliz. Estender `ResponseEntityExceptionHandler`
-faz com que até os erros gerados pelo próprio Spring MVC (JSON malformado,
-parâmetro ausente) saiam no mesmo formato.
-
-**Descartado:** formato de erro próprio (reinventa um padrão existente);
-`try/catch` por controller (duplicação e divergência inevitável).
-
-### 6. Filtros via Specification
-
-`ProdutoSpecifications` compõe predicados opcionais; o repositório estende
-`JpaSpecificationExecutor`.
-
-**Por quê:** cinco filtros opcionais e combináveis dão 32 combinações. Com
-*derived queries* seria uma explosão de assinaturas; com JPQL, concatenação
-condicional de string. Specification compõe só o que veio preenchido, com
-tipagem e sem string.
-
-Um detalhe que custou uma rodada de testes: desde o Spring Data JPA 4,
-`Specification.allOf` **rejeita elementos nulos**. Filtro ausente devolve
-`Specification.unrestricted()`, não `null`.
-
-**Descartado:** Querydsl (mais ergonômico, mas exige geração de código para ganho
-marginal neste tamanho); múltiplos *derived query methods* (não escala).
-
-### 7. Paginação com envelope próprio
-
-Controllers recebem `Pageable` e devolvem `PaginaResponse<T>`.
-
-**Por quê:** o JSON do `Page` do Spring Data é um detalhe interno do framework,
-muda entre versões, e o próprio Spring avisa contra expô-lo. Um record próprio
-congela o contrato.
-
-O teto de página (`spring.data.web.pageable.max-page-size: 100`) impede que um
-cliente peça `?size=100000` e derrube a API — verificado por teste.
-
-**Descartado:** serializar `Page` direto (contrato frágil); paginação por cursor
-(melhor para listas muito grandes, desnecessária aqui).
-
-### 8. Flyway com `ddl-auto: validate`
-
-Migrações SQL versionadas em `db/migration`; o Hibernate **valida** o schema no
-start, nunca o cria.
-
-**Por quê:** `ddl-auto: update` é silenciosamente destrutivo e não versiona nada —
-o schema de produção vira efeito colateral do código. Com Flyway, o schema é
-revisável em PR e reproduzível. `validate` transforma divergência entre entidade e
-tabela em falha no start, e não em erro em produção — foi o que fez o teste de
-fumaça pegar problemas de mapeamento antes de qualquer outra coisa.
-
-O SQL da migração é deliberadamente portável (nada exclusivo de um banco), porque
-a mesma migração roda no H2 durante os testes.
-
-As invariantes também estão no banco, como `CHECK`: preço positivo e saldo não
-negativo. É a última linha de defesa — nem um `UPDATE` manual fura.
-
-**Descartado:** `ddl-auto: update` (conveniência que se paga caro); Liquibase
-(equivalente; Flyway escolhido por SQL puro, mais direto de ler).
-
-### 9. H2 nos testes, PostgreSQL para rodar
-
-O perfil `test` usa H2 em modo de compatibilidade PostgreSQL, rodando as mesmas
-migrações Flyway.
-
-**Por quê:** `mvn verify` precisa funcionar em CI e em máquina sem Docker. Como as
-migrações reais rodam no H2, divergências grosseiras de DDL aparecem no teste.
-
-**Descartado:** Testcontainers (mais fiel — pega dialeto, tipos e comportamento de
-lock reais — mas exige Docker para rodar a suíte; é a evolução recomendada, veja
-abaixo); H2 também em desenvolvimento (esconderia diferenças de dialeto até a
-produção).
-
-**Limitação conhecida:** a unicidade de nome de categoria sem distinção de caixa é
-garantida pela aplicação (`existsByNomeIgnoreCase`) com um `UNIQUE (nome)` exato
-no banco como apoio. O ideal em PostgreSQL seria um índice funcional sobre
-`LOWER(nome)`, que o H2 não suporta — adotá-lo exigiria migrações específicas por
-banco. Sob concorrência extrema resta uma janela estreita em que dois nomes
-diferindo só na caixa poderiam passar.
-
-### 10. Testes em dois níveis
-
-Services testados isoladamente com Mockito; controllers testados com
-`@SpringBootTest` + MockMvc contra H2. Surefire roda `*Test` na fase `test`,
-Failsafe roda `*IT` na fase `verify`.
-
-**Por quê:** regras de negócio (saldo negativo, SKU duplicado, categoria em uso)
-são baratas de cobrir no nível de service e rodam em milissegundos. Já o formato
-RFC 9457, os códigos HTTP e o envelope de paginação só se provam com o stack HTTP
-de pé. A separação em duas fases dá retorno em segundos durante o desenvolvimento
-e cobertura completa antes do merge.
-
-**Descartado:** só testes de integração (lentos, ruins para casos de borda); só
-unitários (não provam o contrato HTTP, que é justamente o que a especificação
-descreve).
-
-### 11. Exclusão restritiva, nunca cascata
-
-Categoria com produtos → `409`. Produto com movimentações → `409`, orientando a
-inativação.
-
-**Por quê:** cascata apaga histórico operacional silenciosamente. Falhar
-explicitamente e oferecer a inativação preserva a auditoria e dá ao cliente uma
-mensagem acionável.
-
-**Descartado:** `ON DELETE CASCADE` (perda de histórico); *soft delete* em tudo
-(mais estado a gerenciar do que o necessário — a inativação já cobre o caso real).
-
-### 12. OpenAPI gerado, não escrito
-
-springdoc deriva a documentação dos controllers e DTOs.
-
-**Por quê:** spec escrita à mão diverge do código na primeira semana. Gerada, ela
-acompanha o código por construção. `DocumentacaoOpenApiIT` transforma uma spec
-quebrada em falha de build, em vez de uma descoberta tardia ao abrir o Swagger.
-
-**Descartado:** *contract-first* com arquivo OpenAPI versionado e geração de stubs
-— superior quando há consumidores externos negociando o contrato antes da
-implementação; excessivo aqui.
-
-### 13. Prefixo `/api/v1` aplicado por configuração
-
-`ApiConfig` aplica o prefixo a todos os controllers do pacote `controller`, via
-propriedade `api.base-path`.
-
-**Por quê:** a alternativa é repetir `/api/v1` em cada `@RequestMapping`, o que
-convida ao erro de digitação e espalha a decisão de versionamento pelo código. O
-Swagger, que está fora desse pacote, continua acessível na raiz.
-
-### 14. Detalhes que valem o parágrafo
-
-- **`BigDecimal` para preço, nunca `double`.** Ponto flutuante binário acumula
-  erro; dinheiro não perdoa. A coluna é `NUMERIC(12,2)` e o DTO valida
-  `@Digits(integer = 10, fraction = 2)` — preço com três casas é rejeitado na
-  borda, não arredondado em silêncio pelo banco.
-- **`Instant` para data/hora, não `LocalDateTime`.** O momento de uma movimentação
-  é absoluto e não depende do fuso do servidor. A coluna é
-  `TIMESTAMP WITH TIME ZONE`.
-- **`Clock` injetado como bean.** `Instant.now()` espalhado pelo código torna o
-  comportamento temporal impossível de testar sem truques; com o `Clock` injetado,
-  o teste passa um relógio fixo.
-- **`open-in-view: false`.** A sessão aberta na camada de view esconde N+1 e
-  permite *lazy loading* acidental no controller. Desligada, quem precisa do dado
-  carrega dentro da transação — por isso os métodos de leitura do
-  `ProdutoController` são `@Transactional(readOnly = true)`.
-- **`@Enumerated(STRING)`.** Ordinal quebraria o histórico inteiro, em silêncio,
-  se alguém reordenasse as constantes do enum.
-- **SKU imutável.** Tentar alterá-lo devolve `409` em vez de ser ignorado. É a
-  identidade externa do produto; mudá-lo quebraria integrações e o histórico.
-- **Injeção por construtor, sem `@Autowired` em campo.** Dependências explícitas,
-  campos `final`, e a classe instanciável em um teste unitário sem subir contexto.
-
-### 15. Sem autenticação — e isso é uma escolha declarada
-
-A API é aberta. Não há Spring Security, usuários nem tokens.
-
-**Por quê:** o escopo desta primeira versão é o domínio e o contrato HTTP.
-Adicionar autenticação traria entidade de usuário, filtros, emissão de token e
-testes de segurança — um segundo projeto dentro deste.
-
-**Isto está documentado aqui justamente para que ninguém a exponha achando que
-está protegida.** Antes de qualquer uso real, veja o primeiro item da próxima
-seção.
+| `400` | O pedido está errado: campo inválido ou faltando, JSON malformado, id não numérico |
+| `404` | O produto não existe |
+| `409` | O pedido está certo, mas conflita com o estado atual: SKU já usado por outro produto |
+| `500` | Erro inesperado; o rastro de pilha vai para o log, nunca para a resposta |
 
 ---
 
 ## Evoluções naturais
 
-1. **Autenticação e autorização.** Spring Security com JWT, protegendo ao menos as
-   operações de escrita. É o pré-requisito para qualquer uso real.
-2. **Testcontainers no lugar do H2.** Elimina a divergência de dialeto e permite
-   testar o comportamento de lock do PostgreSQL de verdade. Custo: Docker passa a
-   ser obrigatório para rodar a suíte.
-3. **Índice funcional `LOWER(nome)` em PostgreSQL**, via migração específica de
-   banco, fechando a janela de concorrência descrita na decisão 9.
-4. **`UPDATE` condicional no lugar do bloqueio pessimista**, se a contenção no
-   mesmo produto virar gargalo medido — e só então.
-5. **Reserva de estoque** (separar "comprometido" de "disponível"), quando houver
-   fluxo de pedido antes da baixa efetiva.
-6. **Observabilidade**: Actuator, métricas de negócio (saídas recusadas por saldo
-   insuficiente é um bom primeiro indicador) e tracing.
+1. **Testes de controller e de integração.** Os testes atuais são unitários.
+   O próximo passo é `@WebMvcTest` para a camada HTTP e `@SpringBootTest` com
+   Testcontainers para rodar contra um PostgreSQL de verdade.
+2. **Controle de concorrência.** Duas atualizações simultâneas do mesmo produto
+   se sobrescrevem (vence a última). Um campo `@Version` faria a segunda receber
+   `409`.
+3. **Índice para a busca por nome.** A busca lê a tabela inteira, o que é
+   irrelevante para um catálogo pequeno. Com muitos produtos, o caminho é um
+   índice GIN com a extensão `pg_trgm`.
+4. **Categorias.** O recurso existia em versões anteriores do projeto e pode
+   voltar como um segundo recurso, com vínculo obrigatório do produto (e com o
+   código organizado por funcionalidade: `produto/`, `categoria/`).
+5. **Arquitetura hexagonal.** Quando o domínio crescer a ponto de valer
+   isolá-lo do JPA e do Spring, o passo seguinte é separar a entidade de negócio
+   da entidade de persistência e declarar o repositório como uma porta.
 
 ---
 
@@ -484,15 +256,11 @@ seção.
 | Java | 21 | LTS |
 | Spring Boot | 4.1.1 | Framework base |
 | Spring Data JPA / Hibernate | via Boot | Persistência |
-| PostgreSQL | 17 | Banco de desenvolvimento e produção |
-| Flyway | 12.x | Migrações versionadas |
-| H2 | 2.x | Banco em memória dos testes |
+| PostgreSQL | 17 | Banco (extensão `unaccent` para a busca) |
+| Flyway | via Boot | Migrações versionadas |
 | springdoc-openapi | 3.1.1 | Documentação OpenAPI |
-| JUnit 5 + Mockito + AssertJ | via Boot | Testes |
+| JUnit 5 / Mockito / AssertJ | via Boot | Testes unitários |
 
 **Nota sobre o Spring Boot 4:** as auto-configurações foram divididas em módulos
 próprios. Declarar apenas `flyway-core` compila, mas as migrações nunca rodam — é
-preciso `spring-boot-starter-flyway`. O mesmo vale para as fatias de teste:
-`@DataJpaTest` e `@AutoConfigureMockMvc` agora vêm de `spring-boot-data-jpa-test`,
-`spring-boot-webmvc-test` e `spring-boot-jdbc-test`, e não mais do
-`spring-boot-starter-test` sozinho.
+preciso `spring-boot-starter-flyway`.
