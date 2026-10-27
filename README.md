@@ -1,5 +1,7 @@
 # catalogo-produtos-api
 
+[![CI](https://github.com/Tetzdesen/catalogo-produtos-api/actions/workflows/ci.yml/badge.svg)](https://github.com/Tetzdesen/catalogo-produtos-api/actions/workflows/ci.yml)
+
 API REST básica de catálogo de produtos em Spring Boot: um único recurso,
 **Produto**, com cadastro, consulta, listagem paginada com busca por nome,
 atualização e exclusão.
@@ -216,6 +218,11 @@ escape do `%` e do `_` no `LIKE`, a ordenação, o SKU único e a gravação da
 atualização no commit. A segurança fica de fora (já está no `SegurancaTest`): as
 escritas usam um usuário autenticado de teste. Por terminar em `IT`, quem roda
 esta classe é o Failsafe, só no `mvn verify`.
+
+No GitHub, o workflow `.github/workflows/ci.yml` roda o `mvn verify` a cada
+push na `main` e a cada pull request, e confere que a imagem Docker ainda é
+construída. Se algum teste falhar, os relatórios ficam para download na página
+da execução.
 
 ---
 

@@ -1,0 +1,71 @@
+# Integração contínua: a cada push na main e a cada pull request, compila,
+# roda todos os testes e confere que a imagem Docker ainda é construída.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # Permite disparar à mão pela aba Actions do GitHub.
+  workflow_dispatch:
+
+# Um push novo no mesmo branch cancela a execução anterior, que já ficou velha.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# O workflow só lê o código; nenhum passo precisa escrever no repositório.
+permissions:
+  contents: read
+
+jobs:
+  testes:
+    name: Build e testes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          # Guarda o ~/.m2 entre execuções, com a chave derivada do pom.xml:
+          # as dependências só são baixadas de novo quando o pom muda.
+          cache: maven
+
+      # 'verify' roda os unitários (Surefire) e o ProdutoApiIT (Failsafe). O
+      # runner do GitHub já tem Docker, que o Testcontainers usa para o PostgreSQL.
+      - name: mvn verify
+        run: mvn -B -ntp verify
+
+      # Quando algum teste falha, os relatórios ficam disponíveis para download
+      # na página da execução, com a mensagem e a pilha de cada falha.
+      - name: Relatórios de teste
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: relatorios-de-teste
+          path: |
+            target/surefire-reports/
+            target/failsafe-reports/
+          retention-days: 7
+
+  imagem:
+    name: Imagem Docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Só constrói, sem publicar em registro nenhum: o objetivo é descobrir no
+      # pull request, e não na hora do deploy, que o Dockerfile quebrou.
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          tags: catalogo-produtos-api:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
