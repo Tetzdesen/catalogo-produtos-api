@@ -94,6 +94,16 @@ public class TratadorGlobalDeErros extends ResponseEntityExceptionHandler {
     }
 
     /**
+     * Pedido mal montado que só a aplicação detecta vira {@code 400 Bad Request}
+     * (por exemplo, {@code ?sort=} com um campo que não existe).
+     */
+    @ExceptionHandler(RequisicaoInvalidaException.class)
+    public ProblemDetail tratarRequisicaoInvalida(RequisicaoInvalidaException excecao) {
+        return problema(HttpStatus.BAD_REQUEST, "Requisição inválida",
+                excecao.getMessage(), TIPO_REQUISICAO_INVALIDA);
+    }
+
+    /**
      * Constraint do banco violada também vira {@code 409}.
      *
      * <p>A {@code SkuUnicoRegra} confere o SKU antes de gravar, mas duas requisições simultâneas

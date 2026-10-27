@@ -1,0 +1,14 @@
+# =============================================================================
+# Perfil 'dev': o que só vale na máquina de quem desenvolve.
+# =============================================================================
+# Ativado automaticamente pelo 'mvn spring-boot:run' (ver o spring-boot-maven-plugin
+# no pom.xml). O jar empacotado não ativa perfil nenhum, então em produção estes
+# padrões não existem e as variáveis DB_* são obrigatórias.
+
+spring:
+  datasource:
+    # ${VARIAVEL:padrao}: usa a variável de ambiente se existir; senão, o valor
+    # depois dos dois-pontos. Os padrões batem com o serviço do docker-compose.yml.
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/catalogo}
+    username: ${DB_USER:catalogo}
+    password: ${DB_PASSWORD:catalogo}
