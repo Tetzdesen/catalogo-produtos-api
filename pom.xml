@@ -83,6 +83,16 @@
         </dependency>
 
         <!--
+          Spring Security como resource server OAuth 2.0: a API não emite tokens,
+          só valida os JWT emitidos por um provedor externo (Keycloak, Auth0,
+          Cognito...). Ver SegurancaConfig.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
+        </dependency>
+
+        <!--
           Health check em /actuator/health, para o orquestrador saber se a
           aplicação está viva. Só esse endpoint é exposto (ver application.yml).
         -->
@@ -98,6 +108,22 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+          @WebMvcTest e MockMvc, mais o jwt() do Spring Security Test: sobem só a
+          camada HTTP e a segurança, sem banco, para conferir quem passa e quem
+          leva 401 (ver SegurancaTest).
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security-oauth2-resource-server-test</artifactId>
             <scope>test</scope>
         </dependency>
 

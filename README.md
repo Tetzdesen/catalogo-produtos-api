@@ -11,10 +11,10 @@ minutos — e cada arquivo é comentado explicando *por que* está ali.
 
 ## Como rodar
 
-**Pré-requisitos:** Java 21 e Maven 3.8+. Docker apenas para o banco.
+**Pré-requisitos:** Java 21 e Maven 3.8+. Docker para o banco e o Keycloak.
 
 ```bash
-# 1. Sobe o PostgreSQL
+# 1. Sobe o PostgreSQL e o Keycloak (o Keycloak leva cerca de um minuto na primeira vez)
 docker compose up -d
 
 # 2. Sobe a aplicação (o Flyway cria a tabela sozinho no start)
@@ -27,15 +27,39 @@ mvn spring-boot:run
 - Health check: `http://localhost:8080/actuator/health`
 
 O `mvn spring-boot:run` ativa o perfil `dev` (`application-dev.yml`), que traz a
-conexão com o banco do `docker-compose.yml`. Rodando pela IDE, ative o perfil com
-`SPRING_PROFILES_ACTIVE=dev`.
+conexão com o banco e com o Keycloak do `docker-compose.yml`. Rodando pela IDE,
+ative o perfil com `SPRING_PROFILES_ACTIVE=dev`.
+
+### Autenticação
+
+Consultar (`GET`) é público. Cadastrar, atualizar e excluir exigem um JWT no
+cabeçalho `Authorization: Bearer <token>`. A API não emite tokens: ela os valida
+(assinatura, emissor, validade e audiência `catalogo-api`) contra um provedor
+OAuth 2.0 / OpenID Connect.
+
+Em desenvolvimento, o provedor é o Keycloak do `docker-compose.yml`, com o realm
+`catalogo` importado de `keycloak/realm-catalogo.json`. Ele já traz o cliente
+`catalogo-cli`, que obtém tokens por *client credentials*:
+
+```bash
+TOKEN=$(curl -s http://localhost:8180/realms/catalogo/protocol/openid-connect/token \
+  -d grant_type=client_credentials -d client_id=catalogo-cli -d client_secret=catalogo-cli-segredo \
+  | jq -r .access_token)
+```
+
+O token vale 5 minutos. No Swagger UI, cole-o no botão **Authorize**.
+
+> O segredo `catalogo-cli-segredo` e o admin `admin/admin` do Keycloak existem só
+> para desenvolvimento. O Keycloak em `start-dev` guarda tudo em memória e
+> recria o realm a cada subida.
 
 > **Já tem um PostgreSQL instalado na máquina?** Ele provavelmente ocupa a porta
 > 5432, e o contêiner vai falhar ao subir. Ou você para o serviço local, ou usa o
 > banco que já tem: crie o papel e o banco (`CREATE USER catalogo WITH PASSWORD
-> 'catalogo'` e `CREATE DATABASE catalogo OWNER catalogo`) e pule o
-> `docker compose`. O usuário precisa ser **dono** do banco, porque a migração
-> cria a extensão `unaccent`. A conexão também pode ser trocada pelas variáveis
+> 'catalogo'` e `CREATE DATABASE catalogo OWNER catalogo`) e pule o contêiner do
+> PostgreSQL, subindo só o Keycloak com `docker compose up -d keycloak`. O
+> usuário precisa ser **dono** do banco, porque a migração cria a extensão
+> `unaccent`. A conexão também pode ser trocada pelas variáveis
 > `DB_URL`, `DB_USER` e `DB_PASSWORD`.
 
 > **Vindo de uma versão anterior deste projeto?** A migração `V1` foi reescrita, e
@@ -50,17 +74,26 @@ conexão com o banco do `docker-compose.yml`. Rodando pela IDE, ative o perfil c
 
 ## Como subir em produção
 
-Fora do perfil `dev`, **não existe conexão padrão**: `DB_URL`, `DB_USER` e
-`DB_PASSWORD` são obrigatórias. Faltando alguma, a aplicação não sobe. O erro
-que aparece é pouco direto (`'url' must start with "jdbc"` ou falha de
-autenticação no banco), mas é proposital: assim ela nunca tenta conectar com a
-senha de desenvolvimento.
+Fora do perfil `dev`, **nada tem valor padrão**. Estas variáveis são
+obrigatórias, e sem elas a aplicação não sobe:
+
+| Variável | O que é |
+|---|---|
+| `DB_URL`, `DB_USER`, `DB_PASSWORD` | Conexão com o PostgreSQL |
+| `JWT_ISSUER_URI` | Emissor dos tokens, ex.: `https://auth.empresa.com/realms/catalogo`. A API busca nele as chaves públicas e recusa token de outro emissor |
+| `JWT_AUDIENCE` | O `aud` que o token precisa ter (ex.: `catalogo-api`). Recusa tokens que o mesmo provedor emitiu para outras aplicações |
+
+Faltando `JWT_*`, o erro é direto (`Could not resolve placeholder
+'JWT_ISSUER_URI'`). Faltando `DB_*`, é menos claro (`'url' must start with
+"jdbc"` ou falha de autenticação no banco). Em todos os casos é proposital:
+a aplicação nunca sobe com a configuração de desenvolvimento.
 
 ```bash
 docker build -t catalogo-produtos-api .
 docker run -p 8080:8080 \
   -e DB_URL=jdbc:postgresql://<host>:5432/catalogo \
   -e DB_USER=<usuario> -e DB_PASSWORD=<senha> \
+  -e JWT_ISSUER_URI=https://<provedor>/realms/catalogo -e JWT_AUDIENCE=catalogo-api \
   catalogo-produtos-api
 ```
 
@@ -69,8 +102,11 @@ docker run -p 8080:8080 \
   Nenhum outro endpoint do actuator fica exposto.
 - O usuário do banco precisa poder criar a extensão `unaccent` na primeira
   migração. Em bancos gerenciados (RDS, Cloud SQL etc.), confira as permissões.
-- **A API não tem autenticação.** Exponha-a só atrás de um gateway ou em rede
-  interna, ou acrescente o Spring Security antes de abri-la ao público.
+- No provedor, o cliente que chama a API precisa receber `catalogo-api` no
+  `aud` do token. No Keycloak, isso é um *audience mapper*, como o de
+  `keycloak/realm-catalogo.json`.
+- Qualquer token válido do provedor com essa audiência pode escrever no
+  catálogo. Não há distinção por papel ou *scope* (ver "Evoluções naturais").
 
 ---
 
@@ -91,7 +127,7 @@ src/main/java/br/com/catalogo/
 ├── dto/            ProdutoRequest, ProdutoResponse, PaginaResponse — o contrato JSON
 ├── mapper/         ProdutoMapper — converte DTO ↔ entidade
 ├── exception/      exceções-base, exceções específicas e o TratadorGlobalDeErros
-└── config/         ApiConfig (prefixo /api/v1), OpenApiConfig
+└── config/         ApiConfig (prefixo /api/v1), SegurancaConfig (quem pode chamar o quê), OpenApiConfig
 src/main/resources/
 ├── application.yml       configuração comum (sem credenciais)
 ├── application-dev.yml   conexão com o banco local, só no perfil dev
@@ -166,8 +202,14 @@ mvn test
 
 Testes unitários com JUnit 5, Mockito e AssertJ, sem subir o Spring nem o banco:
 `ProdutoTest`, `ProdutoMapperTest`, `SkuUnicoRegraTest` e
-`ProdutoServiceImplTest`. O comportamento HTTP de ponta a ponta é conferido
-subindo a aplicação e usando os exemplos de `curl` abaixo.
+`ProdutoServiceImplTest`.
+
+`SegurancaTest` sobe só a camada web (`@WebMvcTest`, sem banco e sem provedor) e
+confere as regras de acesso: `GET` público, escrita com `401` sem token e
+aceita com token.
+
+O resto do comportamento HTTP de ponta a ponta é conferido subindo a aplicação
+e usando os exemplos de `curl` abaixo.
 
 ---
 
@@ -175,13 +217,13 @@ subindo a aplicação e usando os exemplos de `curl` abaixo.
 
 Todos sob `/api/v1`.
 
-| Método | Rota | Resposta de sucesso |
-|---|---|---|
-| `POST` | `/produtos` | `201` + cabeçalho `Location` |
-| `GET` | `/produtos/{id}` | `200` |
-| `GET` | `/produtos?nome=&page=&size=&sort=` | `200` com a página |
-| `PUT` | `/produtos/{id}` | `200` |
-| `DELETE` | `/produtos/{id}` | `204` |
+| Método | Rota | Token | Resposta de sucesso |
+|---|---|---|---|
+| `POST` | `/produtos` | sim | `201` + cabeçalho `Location` |
+| `GET` | `/produtos/{id}` | não | `200` |
+| `GET` | `/produtos?nome=&page=&size=&sort=` | não | `200` com a página |
+| `PUT` | `/produtos/{id}` | sim | `200` |
+| `DELETE` | `/produtos/{id}` | sim | `204` |
 
 **Regras:**
 - `sku` (até 40 caracteres) é único no catálogo.
@@ -202,8 +244,9 @@ Todos sob `/api/v1`.
 ## Exemplos
 
 ```bash
-# Cadastrar
+# Cadastrar ($TOKEN obtido como em "Autenticação")
 curl -i -X POST http://localhost:8080/api/v1/produtos \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"sku":"CAF-001","nome":"Café Torrado","descricao":"Pacote 500g","preco":29.90}'
 
@@ -215,11 +258,12 @@ curl 'http://localhost:8080/api/v1/produtos?nome=cafe&size=10&sort=preco,desc'
 
 # Atualizar (substitui todos os campos)
 curl -X PUT http://localhost:8080/api/v1/produtos/1 \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"sku":"CAF-001","nome":"Café Torrado Especial","preco":34.90,"ativo":false}'
 
 # Excluir
-curl -i -X DELETE http://localhost:8080/api/v1/produtos/1
+curl -i -X DELETE http://localhost:8080/api/v1/produtos/1 -H "Authorization: Bearer $TOKEN"
 ```
 
 Resposta de um produto:
@@ -257,6 +301,8 @@ Todo erro sai no formato da RFC 9457, com `Content-Type: application/problem+jso
 | Código | Quando |
 |---|---|
 | `400` | O pedido está errado: campo inválido ou faltando, JSON malformado, id não numérico, ordenação por campo desconhecido |
+| `401` | Escrita sem token, ou com token expirado, adulterado, de outro emissor ou de outra audiência. O cabeçalho `WWW-Authenticate` diz o motivo |
+| `403` | Token válido, mas sem permissão para a operação (reservado para quando houver papéis ou *scopes*) |
 | `404` | O produto não existe |
 | `409` | O pedido está certo, mas conflita com o estado atual: SKU já usado por outro produto |
 | `500` | Erro inesperado; o rastro de pilha vai para o log, nunca para a resposta |
@@ -265,19 +311,24 @@ Todo erro sai no formato da RFC 9457, com `Content-Type: application/problem+jso
 
 ## Evoluções naturais
 
-1. **Testes de controller e de integração.** Os testes atuais são unitários.
-   O próximo passo é `@WebMvcTest` para a camada HTTP e `@SpringBootTest` com
-   Testcontainers para rodar contra um PostgreSQL de verdade.
-2. **Controle de concorrência.** Duas atualizações simultâneas do mesmo produto
+1. **Testes de controller e de integração.** Fora o `SegurancaTest`, os testes
+   são unitários. O próximo passo é cobrir o resto da camada HTTP com
+   `@WebMvcTest` e usar `@SpringBootTest` com Testcontainers para rodar contra
+   um PostgreSQL de verdade.
+2. **Permissões por papel ou *scope*.** Hoje qualquer token válido escreve. Para
+   separar, por exemplo, quem cadastra de quem só exclui, a `SegurancaConfig`
+   passa a exigir `hasAuthority("SCOPE_catalogo:escrita")` nas rotas certas, e o
+   `403` começa a ser usado.
+3. **Controle de concorrência.** Duas atualizações simultâneas do mesmo produto
    se sobrescrevem (vence a última). Um campo `@Version` faria a segunda receber
    `409`.
-3. **Índice para a busca por nome.** A busca lê a tabela inteira, o que é
+4. **Índice para a busca por nome.** A busca lê a tabela inteira, o que é
    irrelevante para um catálogo pequeno. Com muitos produtos, o caminho é um
    índice GIN com a extensão `pg_trgm`.
-4. **Categorias.** O recurso existia em versões anteriores do projeto e pode
+5. **Categorias.** O recurso existia em versões anteriores do projeto e pode
    voltar como um segundo recurso, com vínculo obrigatório do produto (e com o
    código organizado por funcionalidade: `produto/`, `categoria/`).
-5. **Arquitetura hexagonal.** Quando o domínio crescer a ponto de valer
+6. **Arquitetura hexagonal.** Quando o domínio crescer a ponto de valer
    isolá-lo do JPA e do Spring, o passo seguinte é separar a entidade de negócio
    da entidade de persistência e declarar o repositório como uma porta.
 
@@ -292,6 +343,8 @@ Todo erro sai no formato da RFC 9457, com `Content-Type: application/problem+jso
 | Spring Data JPA / Hibernate | via Boot | Persistência |
 | PostgreSQL | 17 | Banco (extensão `unaccent` para a busca) |
 | Flyway | via Boot | Migrações versionadas |
+| Spring Security (resource server) | via Boot | Validação dos JWT nas rotas de escrita |
+| Keycloak | 26.4 | Provedor de identidade, só em desenvolvimento |
 | springdoc-openapi | 3.1.1 | Documentação OpenAPI |
 | JUnit 5 / Mockito / AssertJ | via Boot | Testes unitários |
 

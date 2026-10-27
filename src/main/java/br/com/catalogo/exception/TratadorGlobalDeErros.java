@@ -13,6 +13,8 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -64,6 +66,8 @@ public class TratadorGlobalDeErros extends ResponseEntityExceptionHandler {
     private static final URI TIPO_REQUISICAO_INVALIDA = URI.create("urn:catalogo:erro:requisicao-invalida");
     private static final URI TIPO_NAO_ENCONTRADO = URI.create("urn:catalogo:erro:nao-encontrado");
     private static final URI TIPO_CONFLITO = URI.create("urn:catalogo:erro:conflito");
+    private static final URI TIPO_NAO_AUTENTICADO = URI.create("urn:catalogo:erro:nao-autenticado");
+    private static final URI TIPO_ACESSO_NEGADO = URI.create("urn:catalogo:erro:acesso-negado");
     private static final URI TIPO_INTERNO = URI.create("urn:catalogo:erro:interno");
 
     /** Um campo que falhou na validação, reportado dentro do corpo do erro. */
@@ -101,6 +105,27 @@ public class TratadorGlobalDeErros extends ResponseEntityExceptionHandler {
     public ProblemDetail tratarRequisicaoInvalida(RequisicaoInvalidaException excecao) {
         return problema(HttpStatus.BAD_REQUEST, "Requisição inválida",
                 excecao.getMessage(), TIPO_REQUISICAO_INVALIDA);
+    }
+
+    /**
+     * Token ausente, expirado, com assinatura inválida ou de outro emissor vira
+     * {@code 401 Unauthorized}. Chega aqui pela {@code SegurancaConfig}, que repassa
+     * os erros do filtro de segurança para este tratador.
+     *
+     * <p>O detalhe é genérico de propósito: o motivo exato já vai no cabeçalho
+     * {@code WWW-Authenticate}, no formato que bibliotecas OAuth sabem ler.
+     */
+    @ExceptionHandler(AuthenticationException.class)
+    public ProblemDetail tratarNaoAutenticado(AuthenticationException excecao) {
+        return problema(HttpStatus.UNAUTHORIZED, "Não autenticado",
+                "Envie um token de acesso válido no cabeçalho Authorization.", TIPO_NAO_AUTENTICADO);
+    }
+
+    /** Token válido, mas sem permissão para a operação, vira {@code 403 Forbidden}. */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ProblemDetail tratarAcessoNegado(AccessDeniedException excecao) {
+        return problema(HttpStatus.FORBIDDEN, "Acesso negado",
+                "O token enviado não dá permissão para esta operação.", TIPO_ACESSO_NEGADO);
     }
 
     /**

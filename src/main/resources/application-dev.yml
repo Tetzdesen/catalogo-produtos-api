@@ -12,3 +12,11 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/catalogo}
     username: ${DB_USER:catalogo}
     password: ${DB_PASSWORD:catalogo}
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # O Keycloak do docker-compose.yml, com o realm de keycloak/realm-catalogo.json.
+          issuer-uri: ${JWT_ISSUER_URI:http://localhost:8180/realms/catalogo}
+          audiences: ${JWT_AUDIENCE:catalogo-api}
