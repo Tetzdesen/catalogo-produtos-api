@@ -177,6 +177,13 @@ class ProdutoApiIT {
                 .andExpect(header().string("Content-Type", MediaType.APPLICATION_PROBLEM_JSON_VALUE));
     }
 
+    @Test
+    void documentacaoFicaDesligadaForaDoPerfilDev() throws Exception {
+        // Este teste roda sem perfil, como o jar em produção.
+        mvc.perform(get("/v3/api-docs")).andExpect(status().isNotFound());
+        mvc.perform(get("/swagger-ui.html")).andExpect(status().isNotFound());
+    }
+
     private ResultActions cadastrar(String sku, String nome, String preco)
             throws Exception {
         return mvc.perform(post("/api/v1/produtos").with(jwt()).contentType(MediaType.APPLICATION_JSON)

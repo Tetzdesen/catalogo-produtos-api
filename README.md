@@ -24,8 +24,8 @@ mvn spring-boot:run
 ```
 
 - API: `http://localhost:8080/api/v1/produtos`
-- Swagger UI: `http://localhost:8080/swagger-ui.html`
-- Spec OpenAPI: `http://localhost:8080/v3/api-docs`
+- Swagger UI: `http://localhost:8080/swagger-ui.html` (só no perfil `dev`)
+- Spec OpenAPI: `http://localhost:8080/v3/api-docs` (só no perfil `dev`)
 - Health check: `http://localhost:8080/actuator/health`
 
 O `mvn spring-boot:run` ativa o perfil `dev` (`application-dev.yml`), que traz a
@@ -100,6 +100,9 @@ docker run -p 8080:8080 \
 ```
 
 - O contêiner roda com um usuário sem privilégios.
+- O Swagger UI e o `/v3/api-docs` ficam desligados (respondem `404`), para não
+  entregar o mapa da API a qualquer um. Para ligá-los em um ambiente que não
+  seja público, como homologação, defina `SWAGGER_HABILITADO=true`.
 - Para o orquestrador: `/actuator/health/liveness` e `/actuator/health/readiness`.
   Nenhum outro endpoint do actuator fica exposto.
 - O usuário do banco precisa poder criar a extensão `unaccent` na primeira

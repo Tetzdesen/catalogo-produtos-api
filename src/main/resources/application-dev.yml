@@ -20,3 +20,10 @@ spring:
           # O Keycloak do docker-compose.yml, com o realm de keycloak/realm-catalogo.json.
           issuer-uri: ${JWT_ISSUER_URI:http://localhost:8180/realms/catalogo}
           audiences: ${JWT_AUDIENCE:catalogo-api}
+
+# Em desenvolvimento, a documentação fica sempre ligada (ver application.yml).
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
