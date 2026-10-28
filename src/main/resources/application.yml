@@ -70,8 +70,15 @@ spring:
 api:
   base-path: /api/v1
 
+# A documentação (Swagger UI e /v3/api-docs) fica desligada fora do perfil dev.
+# Em produção, ela entregaria a qualquer um o mapa completo da API: rotas,
+# parâmetros e formato de cada payload. SWAGGER_HABILITADO=true a liga de novo,
+# por exemplo em um ambiente de homologação.
 springdoc:
+  api-docs:
+    enabled: ${SWAGGER_HABILITADO:false}
   swagger-ui:
+    enabled: ${SWAGGER_HABILITADO:false}
     path: /swagger-ui.html
 
 management:
