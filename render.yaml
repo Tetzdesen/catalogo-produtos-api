@@ -1,0 +1,53 @@
+# =============================================================================
+# Blueprint do Render: descreve a demo online da API como código.
+# =============================================================================
+# No painel do Render: New > Blueprint > escolha este repositório. O Render lê
+# este arquivo, constrói a imagem pelo Dockerfile e pede os valores marcados
+# com 'sync: false', que são os segredos e por isso não ficam no Git.
+#
+# O banco (Supabase ou outro PostgreSQL) e o emissor de JWT (Auth0 ou
+# outro provedor OpenID Connect) ficam fora daqui: o README, na seção
+# "Demo online", explica como preparar cada um.
+
+services:
+  - type: web
+    name: catalogo-produtos-api
+    runtime: docker
+    # No plano gratuito, a instância dorme depois de um tempo sem acesso e leva
+    # de 30 a 60 segundos para acordar na próxima requisição.
+    plan: free
+    region: oregon
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    # Só publica de novo depois que o CI do GitHub passar no commit.
+    autoDeployTrigger: checksPass
+    # Readiness, e não o health geral: o Render só manda tráfego quando a
+    # aplicação terminou de subir e conectou no banco.
+    healthCheckPath: /actuator/health/readiness
+    envVars:
+      # A aplicação escuta na 8080 (padrão do Spring Boot e o EXPOSE do
+      # Dockerfile). O Render usa esta variável para saber para onde mandar o
+      # tráfego.
+      - key: PORT
+        value: "8080"
+      # A demo é para ser vista: o Swagger UI é a interface dela. Não abre nada
+      # de novo, já que as consultas são públicas e as escritas continuam
+      # exigindo token.
+      - key: SWAGGER_HABILITADO
+        value: "true"
+      - key: JWT_AUDIENCE
+        value: catalogo-api
+      # Segredos e endereços do ambiente: o Render pede no momento da criação.
+      # No Supabase, use o Session pooler (porta 5432):
+      # DB_URL=jdbc:postgresql://aws-0-<regiao>.pooler.supabase.com:5432/postgres?sslmode=require
+      # DB_USER=postgres.<ref-do-projeto>
+      - key: DB_URL
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      # Ex.: https://<tenant>.us.auth0.com/  (com a barra final, igual ao 'iss' do token)
+      - key: JWT_ISSUER_URI
+        sync: false

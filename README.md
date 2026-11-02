@@ -11,6 +11,25 @@ minutos — e cada arquivo é comentado explicando *por que* está ali.
 
 ---
 
+## Demo online
+
+- Swagger UI: https://catalogo-produtos-api.onrender.com/swagger-ui.html
+- API: https://catalogo-produtos-api.onrender.com/api/v1/produtos
+
+As consultas (`GET`) são públicas e dá para testá-las direto no Swagger: listar,
+buscar por nome sem acento (`?nome=cafe`), paginar e ordenar. Cadastrar,
+atualizar e excluir aparecem na documentação, mas pedem um token. É a
+segurança funcionando, e é ela que impede qualquer visitante de apagar o
+catálogo.
+
+> A demo roda no plano gratuito do Render, que desliga a instância depois de um
+> tempo sem acesso. O primeiro acesso pode levar de 30 a 60 segundos enquanto
+> ela acorda; os seguintes respondem normalmente.
+
+Como ela foi montada está em "Publicando a demo", mais abaixo.
+
+---
+
 ## Como rodar
 
 **Pré-requisitos:** Java 21 e Maven 3.8+. Docker para o banco e o Keycloak.
@@ -101,8 +120,8 @@ docker run -p 8080:8080 \
 
 - O contêiner roda com um usuário sem privilégios.
 - O Swagger UI e o `/v3/api-docs` ficam desligados (respondem `404`), para não
-  entregar o mapa da API a qualquer um. Para ligá-los em um ambiente que não
-  seja público, como homologação, defina `SWAGGER_HABILITADO=true`.
+  entregar o mapa da API a qualquer um. Para ligá-los, defina
+  `SWAGGER_HABILITADO=true`, como em homologação ou na demo online.
 - Para o orquestrador: `/actuator/health/liveness` e `/actuator/health/readiness`.
   Nenhum outro endpoint do actuator fica exposto.
 - O usuário do banco precisa poder criar a extensão `unaccent` na primeira
@@ -112,6 +131,49 @@ docker run -p 8080:8080 \
   `keycloak/realm-catalogo.json`.
 - Qualquer token válido do provedor com essa audiência pode escrever no
   catálogo. Não há distinção por papel ou *scope* (ver "Evoluções naturais").
+
+### Publicando a demo (Render + Supabase + Auth0)
+
+A demo usa três serviços com plano gratuito. O Keycloak do `docker-compose.yml`
+fica só no desenvolvimento: hospedá-lo pede mais memória do que um plano
+gratuito oferece, e a API aceita qualquer provedor OpenID Connect.
+
+1. **Banco (Supabase).** Crie um projeto e, em *Connect*, copie os dados do
+   **Session pooler**. A conexão direta (`db.<ref>.supabase.co`) só responde
+   por IPv6 no plano gratuito, e o Render não alcança esse endereço. O modo
+   *session* (porta `5432`) também é o que funciona com o JDBC; o modo
+   *transaction* (porta `6543`) não suporta os *prepared statements* que o
+   driver usa. Fica assim:
+   - `DB_URL`: `jdbc:postgresql://aws-0-<regiao>.pooler.supabase.com:5432/postgres?sslmode=require`
+   - `DB_USER`: `postgres.<ref-do-projeto>`
+   - `DB_PASSWORD`: a senha do banco definida na criação do projeto
+
+   O usuário `postgres` pode criar a extensão `unaccent`, que a migração exige.
+2. **Emissor de tokens (Auth0).** Em *Applications > APIs*, crie uma API com o
+   identificador `catalogo-api`, que vira o `aud` do token. Em
+   *Applications*, crie uma aplicação *Machine to Machine* autorizada nessa
+   API, que faz o papel do `catalogo-cli` do Keycloak. O emissor é
+   `https://<tenant>.us.auth0.com/`, **com a barra final**, porque a API o
+   compara exatamente com o `iss` do token.
+3. **API (Render).** Em *New > Blueprint*, escolha este repositório. O Render lê
+   o `render.yaml`, constrói a imagem pelo `Dockerfile` e pede `DB_URL`,
+   `DB_USER`, `DB_PASSWORD` e `JWT_ISSUER_URI`. O resto já vem do arquivo:
+   porta `8080`, Swagger ligado, audiência `catalogo-api` e health check em
+   `/actuator/health/readiness`. Cada push na `main` publica de novo, mas só
+   depois que o CI passar.
+4. **Dados de exemplo.** Um catálogo vazio não mostra a busca nem a paginação.
+   Obtenha um token da aplicação M2M e cadastre alguns produtos:
+
+   ```bash
+   TOKEN=$(curl -s https://<tenant>.us.auth0.com/oauth/token \
+     -H 'Content-Type: application/json' \
+     -d '{"grant_type":"client_credentials","client_id":"<id>","client_secret":"<segredo>","audience":"catalogo-api"}' \
+     | jq -r .access_token)
+
+   curl -X POST https://catalogo-produtos-api.onrender.com/api/v1/produtos \
+     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{"sku":"CAF-001","nome":"Café Torrado","descricao":"Pacote 500g","preco":29.90}'
+   ```
 
 ---
 
