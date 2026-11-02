@@ -47,6 +47,10 @@ mvn spring-boot:run
 - Spec OpenAPI: `http://localhost:8080/v3/api-docs` (só no perfil `dev`)
 - Health check: `http://localhost:8080/actuator/health`
 
+Para ter o que listar e buscar, cadastre os produtos de exemplo com
+`scripts/popular-produtos.sh`. Sem argumentos, ele usa a API local e pede o token
+ao Keycloak do `docker-compose.yml` sozinho.
+
 O `mvn spring-boot:run` ativa o perfil `dev` (`application-dev.yml`), que traz a
 conexão com o banco e com o Keycloak do `docker-compose.yml`. Rodando pela IDE,
 ative o perfil com `SPRING_PROFILES_ACTIVE=dev`.
@@ -162,7 +166,8 @@ gratuito oferece, e a API aceita qualquer provedor OpenID Connect.
    `/actuator/health/readiness`. Cada push na `main` publica de novo, mas só
    depois que o CI passar.
 4. **Dados de exemplo.** Um catálogo vazio não mostra a busca nem a paginação.
-   Obtenha um token da aplicação M2M e cadastre alguns produtos:
+   Obtenha um token da aplicação M2M e rode o script de exemplo, que cadastra
+   18 produtos:
 
    ```bash
    TOKEN=$(curl -s https://<tenant>.us.auth0.com/oauth/token \
@@ -170,10 +175,10 @@ gratuito oferece, e a API aceita qualquer provedor OpenID Connect.
      -d '{"grant_type":"client_credentials","client_id":"<id>","client_secret":"<segredo>","audience":"catalogo-api"}' \
      | jq -r .access_token)
 
-   curl -X POST https://catalogo-produtos-api.onrender.com/api/v1/produtos \
-     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-     -d '{"sku":"CAF-001","nome":"Café Torrado","descricao":"Pacote 500g","preco":29.90}'
+   API_URL=https://catalogo-produtos-api.onrender.com TOKEN=$TOKEN scripts/popular-produtos.sh
    ```
+
+   Rodar de novo não duplica nada: SKU que já existe volta `409` e é pulado.
 
 ---
 
