@@ -42,7 +42,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @WebMvcTest(controllers = ProdutoController.class, properties = {
         "JWT_ISSUER_URI=https://emissor.invalid/realms/catalogo",
         "JWT_AUDIENCE=catalogo-api"})
-@Import({SegurancaConfig.class, ApiConfig.class})
+@Import({SegurancaConfig.class, ApiConfig.class, PaginaInicialConfig.class})
 class SegurancaTest {
 
     private static final String CORPO = """
@@ -56,6 +56,14 @@ class SegurancaTest {
 
     @MockitoBean
     private JwtDecoder decodificador;
+
+    @Test
+    void raizRedirecionaParaOCatalogoSemPedirToken() throws Exception {
+        // Sem SWAGGER_HABILITADO (como aqui), o destino é a listagem pública.
+        mvc.perform(get("/"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(header().string("Location", "/api/v1/produtos"));
+    }
 
     @Test
     void consultaNaoExigeToken() throws Exception {

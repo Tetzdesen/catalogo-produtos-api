@@ -27,7 +27,8 @@ import org.springframework.web.servlet.HandlerExceptionResolver;
  * {@code spring.security.oauth2.resourceserver.jwt} no {@code application.yml}.
  *
  * <p><b>As regras:</b> consultar o catálogo ({@code GET}) é público; cadastrar,
- * alterar e excluir exigem token. Health check e documentação ficam abertos.
+ * alterar e excluir exigem token. Health check, documentação e o redirecionamento
+ * da raiz ({@code /}) ficam abertos.
  * Todo o resto cai no {@code anyRequest().authenticated()}: uma rota nova nasce
  * protegida, e abri-la é uma decisão explícita, nunca um esquecimento.
  */
@@ -51,6 +52,8 @@ public class SegurancaConfig {
                 .sessionManagement(sessao -> sessao.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(regras -> regras
                         .requestMatchers(HttpMethod.GET, basePath + "/**").permitAll()
+                        // A raiz só redireciona (ver PaginaInicialConfig).
+                        .requestMatchers(HttpMethod.GET, "/").permitAll()
                         .requestMatchers("/actuator/health/**").permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated())

@@ -14,7 +14,8 @@ services:
     name: catalogo-produtos-api
     runtime: docker
     # No plano gratuito, a instância dorme depois de um tempo sem acesso e leva
-    # de 30 a 60 segundos para acordar na próxima requisição.
+    # de 2 a 3 minutos para acordar na próxima requisição (o Spring sobe devagar
+    # na CPU pequena do plano).
     plan: free
     region: oregon
     branch: main

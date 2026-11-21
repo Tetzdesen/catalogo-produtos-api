@@ -23,8 +23,12 @@ segurança funcionando, e é ela que impede qualquer visitante de apagar o
 catálogo.
 
 > A demo roda no plano gratuito do Render, que desliga a instância depois de um
-> tempo sem acesso. O primeiro acesso pode levar de 30 a 60 segundos enquanto
-> ela acorda; os seguintes respondem normalmente.
+> tempo sem acesso. O primeiro acesso pode levar de 2 a 3 minutos enquanto ela
+> acorda, porque a CPU do plano gratuito é pequena e o Spring sobe devagar; os
+> seguintes respondem normalmente.
+
+O endereço raiz redireciona para o Swagger UI quando a documentação está
+ligada, como na demo, e para a listagem de produtos quando não está.
 
 Como ela foi montada está em "Publicando a demo", mais abaixo.
 
@@ -179,6 +183,9 @@ gratuito oferece, e a API aceita qualquer provedor OpenID Connect.
    ```
 
    Rodar de novo não duplica nada: SKU que já existe volta `409` e é pulado.
+   Se a instância estiver dormindo, o script espera ela acordar antes de
+   cadastrar, e recusa na hora um `TOKEN` que não seja um JWT (como o `null`
+   que o `jq` devolve quando o Auth0 nega o pedido).
 
 ---
 
@@ -199,7 +206,8 @@ src/main/java/br/com/catalogo/
 ├── dto/            ProdutoRequest, ProdutoResponse, PaginaResponse — o contrato JSON
 ├── mapper/         ProdutoMapper — converte DTO ↔ entidade
 ├── exception/      exceções-base, exceções específicas e o TratadorGlobalDeErros
-└── config/         ApiConfig (prefixo /api/v1), SegurancaConfig (quem pode chamar o quê), OpenApiConfig
+└── config/         ApiConfig (prefixo /api/v1), SegurancaConfig (quem pode chamar o quê), OpenApiConfig,
+                    PaginaInicialConfig (para onde a raiz / redireciona)
 src/main/resources/
 ├── application.yml       configuração comum (sem credenciais)
 ├── application-dev.yml   conexão com o banco local, só no perfil dev

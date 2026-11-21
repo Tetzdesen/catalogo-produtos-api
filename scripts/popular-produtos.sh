@@ -37,6 +37,27 @@ if [[ -z "${TOKEN:-}" ]]; then
     fi
 fi
 
+# Quando o provedor recusa o pedido de token (secret errado, audiência que não
+# existe...), a resposta não tem access_token e o 'jq -r' devolve a palavra
+# "null". Sem esta conferência, o script mandaria 'Bearer null' e a API
+# responderia um 401 que esconde a causa real. Um JWT tem sempre três partes
+# separadas por ponto.
+if [[ ! "$TOKEN" =~ ^[^.]+\.[^.]+\.[^.]+$ ]]; then
+    echo "TOKEN não é um JWT (veio \"${TOKEN:0:20}\"). O provedor provavelmente recusou o pedido de token:" >&2
+    echo "confira client_id, client_secret e audience no comando que o gerou." >&2
+    exit 1
+fi
+
+# No plano gratuito do Render, a instância dorme sem acesso e leva de 2 a 3
+# minutos para subir de novo. Acordá-la antes, pelo readiness, evita que o
+# primeiro cadastro estoure o tempo limite. Localmente, responde na hora.
+echo "Conferindo se a API está no ar (pode levar alguns minutos se ela estiver dormindo)..."
+pronta=$(curl -s -o /dev/null -w '%{http_code}' --max-time 300 "$API_URL/actuator/health/readiness") || pronta=000
+if [[ "$pronta" != "200" ]]; then
+    echo "A API não ficou pronta em $API_URL (readiness: $pronta)." >&2
+    exit 1
+fi
+
 # SKU | nome | descrição | preço
 # Os nomes têm acentos e maiúsculas de propósito: "cafe" encontra "Café Torrado"
 # e "CAFETEIRA", e "acucar" encontra "Açúcar Mascavo".
